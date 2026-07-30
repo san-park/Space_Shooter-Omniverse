@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS players (
     hearts          INTEGER NOT NULL DEFAULT 3,
     current_ship_id INTEGER NOT NULL DEFAULT 1,
     current_level   INTEGER NOT NULL DEFAULT 1,
+    best_score      INTEGER NOT NULL DEFAULT 0,   -- best Infinity-mode score
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (current_ship_id) REFERENCES spaceships(id)
 );
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS spaceships (
     speed           INTEGER NOT NULL,       -- movement speed
     power_capacity  INTEGER NOT NULL,       -- how strong / long the "power" ability is
     fire_rate       INTEGER NOT NULL,       -- ms between shots
+    shield          INTEGER NOT NULL DEFAULT 0, -- armor: hits absorbed before a heart is lost
     unlock_level    INTEGER NOT NULL,       -- level that must be completed to unlock (0 = free)
     color           TEXT NOT NULL DEFAULT '#00e5ff'
 );
@@ -68,12 +70,12 @@ CREATE TABLE IF NOT EXISTS player_progress (
 -- Seed data
 -- =========================================================
 
-INSERT INTO spaceships (name, cost, speed, power_capacity, fire_rate, unlock_level, color) VALUES
-('Falcon Starter', 0,   4, 1, 400, 0, '#00e5ff'),
-('Nova Striker',   300, 5, 2, 320, 1, '#ff9100'),
-('Vortex Blade',   700, 6, 3, 260, 2, '#7c4dff'),
-('Titan Cruiser', 1200, 7, 4, 200, 3, '#ff1744'),
-('Phoenix X',     2000, 8, 5, 150, 4, '#ffd600');
+INSERT INTO spaceships (name, cost, speed, power_capacity, fire_rate, shield, unlock_level, color) VALUES
+('Falcon Starter', 0,   4, 1, 400, 0, 0, '#00e5ff'),
+('Nova Striker',   300, 5, 2, 320, 1, 1, '#ff9100'),
+('Vortex Blade',   700, 6, 3, 260, 2, 2, '#7c4dff'),
+('Titan Cruiser', 1200, 7, 4, 200, 3, 3, '#ff1744'),
+('Phoenix X',     2000, 8, 5, 150, 4, 4, '#ffd600');
 
 INSERT INTO levels (level_number, name, distance, alien_count, obstacle_density, reward_coins, unlock_ship_id) VALUES
 (1, 'Asteroid Belt',   3000, 5,  0.20, 150, 2),

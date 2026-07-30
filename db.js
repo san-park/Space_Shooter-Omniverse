@@ -20,6 +20,14 @@ if (isNewDb) {
   // Make sure tables exist even if the file existed but was empty
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   db.exec(schema.replace(/INSERT INTO[\s\S]*$/i, '')); // just (re)create tables, skip re-seeding
+
+  // Migrate older databases (created before "shield" / "best_score" existed)
+  const tryAddColumn = (table, column, definition) => {
+    try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`); }
+    catch (e) { /* column already exists - ignore */ }
+  };
+  tryAddColumn('spaceships', 'shield', 'INTEGER NOT NULL DEFAULT 0');
+  tryAddColumn('players', 'best_score', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 module.exports = db;

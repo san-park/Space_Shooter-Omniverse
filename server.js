@@ -38,6 +38,7 @@ function playerPublicState(player) {
     hearts: player.hearts,
     currentShipId: player.current_ship_id,
     currentLevel: player.current_level,
+    bestScore: player.best_score,
     ownedShips: ships,
     progress
   };
@@ -167,6 +168,16 @@ app.post('/api/player/:username/hearts', (req, res) => {
   const player = getOrCreatePlayer(req.params.username);
   const clamped = Math.max(0, Math.min(5, hearts));
   db.prepare('UPDATE players SET hearts = ? WHERE id = ?').run(clamped, player.id);
+  const updated = db.prepare('SELECT * FROM players WHERE id = ?').get(player.id);
+  res.json(playerPublicState(updated));
+});
+
+// Report an Infinity-mode run's score; keeps the best score
+app.post('/api/player/:username/score', (req, res) => {
+  const { score = 0 } = req.body;
+  const player = getOrCreatePlayer(req.params.username);
+  const best = Math.max(player.best_score, score);
+  db.prepare('UPDATE players SET best_score = ? WHERE id = ?').run(best, player.id);
   const updated = db.prepare('SELECT * FROM players WHERE id = ?').get(player.id);
   res.json(playerPublicState(updated));
 });
