@@ -160,6 +160,26 @@ html, body {
   padding: 0 14px;
 }
 #hearts { font-size: 18px; letter-spacing: 2px; pointer-events: none; }
+#hull-bar {
+  position: relative;
+  width: 130px; height: 20px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.2);
+  overflow: hidden;
+  pointer-events: none;
+}
+#hull-fill {
+  height: 100%; width: 100%;
+  background: linear-gradient(90deg,#2ecc71,#27ae60);
+  transition: width 0.25s ease, background 0.25s ease;
+}
+#hull-label {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: bold; letter-spacing: 1px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
 #shield-indicator { font-size: 13px; color: #7c4dff; font-weight: bold; pointer-events: none; }
 #coins { font-size: 15px; font-weight: bold; pointer-events: none; }
 
@@ -271,9 +291,8 @@ html, body {
 .ship-card.current { border-color: #ffd600; box-shadow: 0 0 16px rgba(255,214,0,0.3); }
 .ship-card.owned { border-color: #2e7d32; }
 .ship-card .ship-img {
-  font-size: 44px;
-  transform: rotate(0deg);
-  filter: drop-shadow(0 0 8px currentColor);
+  width: 80px; height: auto;
+  filter: drop-shadow(0 0 10px var(--glow, #00e5ff));
 }
 .ship-card .ship-name { font-size: 16px; font-weight: bold; }
 .ship-card .ship-stats {

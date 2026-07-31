@@ -36,6 +36,25 @@ armor/shield stat is used up first). Run out of hearts = game over.
   ship image on top, then Speed / Fire Rate / Shield stats, price, and a
   Buy/Equip button
 
+## Art assets (frontend/assets/)
+Real artwork replaces the emoji placeholders, extracted from the reference
+sprite sheets you provided:
+- `bg-space.png` — scrolling parallax background (starfield/nebula/asteroids),
+  tiled vertically and sped up by ship speed + difficulty
+- `ships/` — 5 player ships (falcon, nova, vortex, titan, phoenix), one per
+  shop tier, shown in-game (rotated to face up) and on shop cards
+- `aliens/` — 5 enemy tiers (saucer_small → saucer_medium → frigate → catn →
+  cruiser). **Levels mode**: Level 1 spawns mostly saucer_small, Level 5
+  mostly cruiser. **Infinity mode**: enemy tier rises automatically as your
+  score climbs.
+- `rocks/` — 3 asteroid variants (cropped straight from the background art,
+  so they blend seamlessly into the scrolling backdrop) used for obstacles
+
+## Ship health display
+Hearts were replaced with a **hull integrity bar** in the HUD (`HULL 100%`),
+color-coded green → amber → red as it depletes. Each ship's separate
+🛡️ Shield stat (armor) still absorbs hits first, before hull drops.
+
 ## Structure
 ```
 space-shooter/

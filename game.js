@@ -226,6 +226,54 @@ const Sound = {
 };
 
 // ==========================================================
+// IMAGE ASSETS (ships, aliens, asteroids, scrolling background)
+// ==========================================================
+const ASSET_PATHS = {
+  bg: 'assets/bg-space.png',
+  ships: {
+    1: 'assets/ships/falcon.png',
+    2: 'assets/ships/nova.png',
+    3: 'assets/ships/vortex.png',
+    4: 'assets/ships/titan.png',
+    5: 'assets/ships/phoenix.png',
+  },
+  // ordered weakest -> strongest; higher levels / higher Infinity score pull from further down the list
+  aliens: [
+    'assets/aliens/saucer_small.png',
+    'assets/aliens/saucer_medium.png',
+    'assets/aliens/frigate.png',
+    'assets/aliens/catn.png',
+    'assets/aliens/cruiser.png',
+  ],
+  rocks: ['assets/rocks/rock1.png', 'assets/rocks/rock2.png', 'assets/rocks/rock3.png'],
+};
+const SHIP_ROTATION_DEG = 18;   // corrects the ship art (drawn nose-up-left) to point straight up
+const ALIEN_ROTATION_DEG = 160; // aliens face roughly downward, toward the player
+
+const Images = { bg: null, ships: {}, aliens: [], rocks: [] };
+function loadImage(src) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+async function preloadAssets() {
+  Images.bg = await loadImage(ASSET_PATHS.bg);
+  const shipEntries = await Promise.all(Object.entries(ASSET_PATHS.ships).map(async ([id, src]) => [id, await loadImage(src)]));
+  shipEntries.forEach(([id, img]) => { Images.ships[id] = img; });
+  Images.aliens = await Promise.all(ASSET_PATHS.aliens.map(loadImage));
+  Images.rocks = await Promise.all(ASSET_PATHS.rocks.map(loadImage));
+}
+function alienTierForLevel(levelNumber) {
+  return Math.max(0, Math.min(ASSET_PATHS.aliens.length - 1, levelNumber - 1));
+}
+function alienTierForScore(score) {
+  return Math.max(0, Math.min(ASSET_PATHS.aliens.length - 1, Math.floor(score / 400)));
+}
+
+// ==========================================================
 // DOM REFERENCES
 // ==========================================================
 const canvas = document.getElementById('game-canvas');
@@ -259,7 +307,8 @@ function showOverlay(name) {
 }
 
 const HUD = {
-  hearts: document.getElementById('hearts'),
+  hullFill: document.getElementById('hull-fill'),
+  hullLabel: document.getElementById('hull-label'),
   shield: document.getElementById('shield-indicator'),
   coinCount: document.getElementById('coin-count'),
   pathFill: document.getElementById('path-fill'),
@@ -297,7 +346,7 @@ const state = {
   keys: { left: false, right: false, up: false, down: false },
   player: { x: 0, y: 0, w: 34, h: 50 },
   obstacles: [], aliens: [], bullets: [], alienBullets: [], coins: [], powerups: [],
-  lastSpawn: 0,
+  lastSpawn: 0, bgOffset: 0,
 };
 
 function currentShip() {
@@ -314,6 +363,7 @@ function isPowerActive(type) {
 async function init() {
   resizeCanvas();
   const [profile, ships, levels] = await Promise.all([Api.getPlayer(), Api.getShips(), Api.getLevels()]);
+  await preloadAssets();
   state.profile = normalizeProfile(profile);
   state.ships = ships;
   state.levels = levels;
@@ -377,7 +427,7 @@ function resetRunState() {
   state.player.x = canvas.width / 2 - state.player.w / 2;
   state.player.y = canvas.height - 130;
 
-  renderHearts();
+  renderHull();
   renderShieldIndicator();
   HUD.coinCount.textContent = state.profile.coins;
   renderActivePowerBadges();
@@ -420,8 +470,14 @@ function beginRunLoop() {
   requestAnimationFrame(loop);
 }
 
-function renderHearts() {
-  HUD.hearts.textContent = '❤️'.repeat(Math.max(0, state.hearts)) + '🖤'.repeat(Math.max(0, 3 - state.hearts));
+function renderHull() {
+  const pct = Math.max(0, Math.round((state.hearts / 3) * 100));
+  HUD.hullFill.style.width = pct + '%';
+  HUD.hullLabel.textContent = 'HULL ' + pct + '%';
+  let color = 'linear-gradient(90deg,#2ecc71,#27ae60)'; // healthy - green
+  if (pct <= 33) color = 'linear-gradient(90deg,#ff5252,#c62828)';       // critical - red
+  else if (pct <= 66) color = 'linear-gradient(90deg,#ffca28,#ff9100)'; // damaged - amber
+  HUD.hullFill.style.background = color;
 }
 function renderShieldIndicator() {
   HUD.shield.textContent = state.shipArmor > 0 ? `🛡️ x${state.shipArmor}` : '';
@@ -461,16 +517,21 @@ function maybeSpawn(dt, now) {
   const roll = Math.random();
   if (roll < 0.42) {
     // obstacle: rock of varied size, falls straight down (no horizontal drift)
-    const size = 22 + Math.random() * 34;
+    const size = 26 + Math.random() * 34;
     state.obstacles.push({
       x: Math.random() * (canvas.width - size), y: -size,
-      w: size, h: size, vy: (2 + Math.random() * 2 + baseDensity * 2) * mult
+      w: size, h: size, vy: (2 + Math.random() * 2 + baseDensity * 2) * mult,
+      imgIndex: Math.floor(Math.random() * ASSET_PATHS.rocks.length)
     });
   } else if (roll < 0.68 && state.aliens.length < (state.currentLevel.alien_count || 6) * mult) {
+    const baseTier = state.mode === 'levels'
+      ? alienTierForLevel(state.currentLevel.level_number || 1)
+      : alienTierForScore(state.score);
+    const tier = Math.min(ASSET_PATHS.aliens.length - 1, baseTier + (Math.random() < 0.3 ? 1 : 0));
     state.aliens.push({
       x: Math.random() * (canvas.width - 36), y: -36,
-      w: 36, h: 30, vy: (1.4 + Math.random() * 1.2) * mult,
-      lastShot: now, shotInterval: Math.max(500, 1400 - baseDensity * 500)
+      w: 38, h: 38, vy: (1.4 + Math.random() * 1.2) * mult,
+      lastShot: now, shotInterval: Math.max(500, 1400 - baseDensity * 500), tier
     });
   } else if (roll < 0.85) {
     state.coins.push({ x: Math.random() * (canvas.width - 20), y: -20, w: 20, h: 20, vy: 2.5 * mult });
@@ -515,6 +576,7 @@ function update(dt, now) {
   } else {
     state.score += (0.6 + ship.speed * 0.05) * (dt / 16.67) * difficultyMultiplier();
   }
+  state.bgOffset += (1.2 + ship.speed * 0.25) * difficultyMultiplier() * speedBoost * (dt / 16.67);
 
   maybeSpawn(dt, now);
   moveEntities(state.obstacles, dt);
@@ -607,7 +669,7 @@ function rectsOverlap(a, b) {
 function catchPower(type, now) {
   if (type === 'heart') {
     state.hearts = Math.min(5, state.hearts + 1);
-    renderHearts();
+    renderHull();
   } else {
     const def = POWER_TYPES[type];
     state.activePowers[type] = now + def.duration; // stacks/refreshes independently of other powers
@@ -622,7 +684,7 @@ function onPlayerHit(now) {
     renderShieldIndicator();
   } else {
     state.hearts -= 1;
-    renderHearts();
+    renderHull();
   }
   state.invincibleUntil = now + 1100;
   canvas.classList.add('shake');
@@ -633,10 +695,10 @@ function onPlayerHit(now) {
 // ==========================================================
 // DRAW
 // ==========================================================
-const ROCK_EMOJI = '🪨';
+const ROCK_EMOJI = '🪨'; // fallback if an image asset fails to load
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawStars();
+  drawScrollingBackground();
 
   ctx.font = '18px sans-serif';
   state.coins.forEach(c => ctx.fillText('🪙', c.x, c.y + 16));
@@ -644,10 +706,9 @@ function draw() {
   ctx.font = '24px sans-serif';
   state.powerups.forEach(p => ctx.fillText(POWER_TYPES[p.type].icon, p.x, p.y + 20));
 
-  state.obstacles.forEach(o => { ctx.font = `${o.w}px sans-serif`; ctx.fillText(ROCK_EMOJI, o.x, o.y + o.h); });
+  state.obstacles.forEach(o => drawRock(o));
 
-  ctx.font = '26px sans-serif';
-  state.aliens.forEach(a => ctx.fillText('👾', a.x, a.y + 24));
+  state.aliens.forEach(a => drawAlien(a));
 
   ctx.fillStyle = '#00e5ff';
   state.bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
@@ -657,37 +718,63 @@ function draw() {
   drawShip();
 }
 
+function drawScrollingBackground() {
+  if (!Images.bg) return; // CSS gradient behind the canvas still shows if the image failed to load
+  const scale = canvas.width / Images.bg.width;
+  const tileH = Images.bg.height * scale;
+  let y = state.bgOffset % tileH;
+  for (let drawY = y - tileH; drawY < canvas.height; drawY += tileH) {
+    ctx.drawImage(Images.bg, 0, drawY, canvas.width, tileH);
+  }
+}
+
+function drawRock(o) {
+  const img = Images.rocks[o.imgIndex];
+  if (img) {
+    ctx.drawImage(img, o.x, o.y, o.w, o.w * (img.height / img.width));
+  } else {
+    ctx.font = `${o.w}px sans-serif`;
+    ctx.fillText(ROCK_EMOJI, o.x, o.y + o.h);
+  }
+}
+
+function drawAlien(a) {
+  const img = Images.aliens[a.tier];
+  if (!img) { ctx.font = '26px sans-serif'; ctx.fillText('👾', a.x, a.y + 24); return; }
+  const cx = a.x + a.w / 2, cy = a.y + a.h / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate((ALIEN_ROTATION_DEG * Math.PI) / 180);
+  ctx.drawImage(img, -a.w / 2, -a.h / 2, a.w, a.h);
+  ctx.restore();
+}
+
 function drawShip() {
   const ship = currentShip();
   const now = performance.now();
   const invincible = isPowerActive('shield') || now < state.invincibleUntil;
   const cx = state.player.x + state.player.w / 2;
   const cy = state.player.y + state.player.h / 2;
+  const img = Images.ships[ship.id];
 
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(-Math.PI / 4); // corrects the rocket emoji to point straight up (vertical)
   if (invincible) { ctx.shadowColor = isPowerActive('shield') ? '#ffd600' : '#00e5ff'; ctx.shadowBlur = 22; }
-  ctx.font = '38px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('🚀', 0, 0);
-  ctx.restore();
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
 
-  ctx.fillStyle = ship.color;
-  ctx.fillRect(state.player.x + 4, state.player.y + state.player.h - 4, state.player.w - 8, 3);
-}
-
-function drawStars() {
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  const t = performance.now() / 20;
-  for (let i = 0; i < 60; i++) {
-    const x = (i * 97 + 31) % canvas.width;
-    const y = (i * 53 + t) % canvas.height;
-    ctx.fillRect(x, y, 2, 2);
+  if (img) {
+    ctx.rotate((SHIP_ROTATION_DEG * Math.PI) / 180);
+    const dispW = 48, dispH = 48 * (img.height / img.width);
+    ctx.drawImage(img, -dispW / 2, -dispH / 2, dispW, dispH);
+  } else {
+    ctx.rotate(-Math.PI / 4);
+    ctx.font = '38px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🚀', 0, 0);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
   }
+  ctx.restore();
 }
 
 // ==========================================================
@@ -763,10 +850,11 @@ function renderShop() {
     const card = document.createElement('div');
     card.className = 'ship-card' + (owned ? ' owned' : '') + (isCurrent ? ' current' : '');
 
-    const img = document.createElement('div');
+    const img = document.createElement('img');
     img.className = 'ship-img';
-    img.style.color = ship.color;
-    img.textContent = '🚀';
+    img.src = ASSET_PATHS.ships[ship.id] || '';
+    img.alt = ship.name;
+    img.style.setProperty('--glow', ship.color);
 
     const name = document.createElement('div');
     name.className = 'ship-name';
