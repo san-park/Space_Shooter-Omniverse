@@ -229,7 +229,7 @@ const Sound = {
 // IMAGE ASSETS (ships, aliens, asteroids, scrolling background)
 // ==========================================================
 const ASSET_PATHS = {
-  bg: 'assets/bg-space.png',
+  bg: 'assets/bg-space.jpg',
   ships: {
     1: 'assets/ships/falcon.png',
     2: 'assets/ships/nova.png',
