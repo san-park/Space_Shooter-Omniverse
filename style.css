@@ -160,21 +160,22 @@ html, body {
   padding: 0 14px;
 }
 #hearts { font-size: 18px; letter-spacing: 2px; pointer-events: none; }
-#hull-bar {
+#hull-bars { display: flex; flex-direction: column; gap: 4px; }
+#hull-bar, #hull-bar-p2 {
   position: relative;
-  width: 130px; height: 20px;
+  width: 110px; height: 17px;
   border-radius: 10px;
   background: rgba(255,255,255,0.12);
   border: 1px solid rgba(255,255,255,0.2);
   overflow: hidden;
   pointer-events: none;
 }
-#hull-fill {
+#hull-fill, #hull-fill-p2 {
   height: 100%; width: 100%;
   background: linear-gradient(90deg,#2ecc71,#27ae60);
   transition: width 0.25s ease, background 0.25s ease;
 }
-#hull-label {
+#hull-label, #hull-label-p2 {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   font-size: 10px; font-weight: bold; letter-spacing: 1px;
@@ -314,7 +315,13 @@ html, body {
   z-index: 10;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
-#dpad-mid { display: flex; gap: 6px; }
+#dpad-p2 {
+  position: absolute;
+  bottom: 18px; left: 16px;
+  z-index: 10;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.dpad-mid { display: flex; gap: 6px; }
 .ctrl-btn {
   width: 54px; height: 54px;
   border-radius: 12px;
@@ -324,3 +331,57 @@ html, body {
   font-size: 20px;
 }
 .ctrl-btn:active { background: rgba(0,229,255,0.35); }
+
+/* ---------- Infinity setup wizard (difficulty -> players -> ship) ---------- */
+#infinity-setup-content {
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  width: 100%; max-width: 360px;
+}
+.wizard-title { font-size: 20px; letter-spacing: 2px; }
+.wizard-options { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.wizard-card {
+  width: 100px; min-height: 90px;
+  border-radius: 14px;
+  border: 2px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; cursor: pointer; padding: 10px;
+}
+.wizard-card:active { transform: scale(0.95); }
+.wizard-card .w-icon { font-size: 28px; }
+.wizard-card span { font-size: 12px; font-weight: bold; letter-spacing: 1px; }
+.wizard-card.ship-card-pick { width: 130px; }
+.wizard-card.ship-card-pick img { width: 60px; height: auto; }
+.wizard-back { margin-top: 4px; background: rgba(255,255,255,0.12) !important; }
+.wizard-summary { font-size: 13px; opacity: 0.85; text-align: center; }
+
+/* ---------- Shipyard upgrade cards ---------- */
+.rupee-total { font-size: 14px; font-weight: bold; opacity: 0.9; }
+.upgrade-card {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.06);
+  border: 2px solid rgba(255,255,255,0.14);
+  border-radius: 16px;
+  padding: 16px;
+}
+.upgrade-card.equipped { border-color: #ffd600; box-shadow: 0 0 16px rgba(255,214,0,0.3); }
+.upgrade-card img { width: 70px; height: auto; }
+.upgrade-card .u-name { font-size: 15px; font-weight: bold; }
+.upgrade-card .u-level { font-size: 12px; opacity: 0.8; }
+.ability-row {
+  width: 100%; display: flex; align-items: center; gap: 8px; font-size: 12px;
+}
+.ability-row .a-label { width: 54px; text-align: left; }
+.ability-bar {
+  flex: 1; height: 10px; border-radius: 6px;
+  background: rgba(255,255,255,0.12); overflow: hidden;
+}
+.ability-bar-fill { height: 100%; background: linear-gradient(90deg,#00e5ff,#7c4dff); }
+.ability-row button {
+  min-width: 0 !important; padding: 4px 8px !important; font-size: 11px !important;
+}
+.breakthrough-btn {
+  background: linear-gradient(180deg,#ffd600,#ff9100) !important;
+  color: #201400 !important;
+}
+.equip-btn { background: rgba(255,255,255,0.15) !important; }

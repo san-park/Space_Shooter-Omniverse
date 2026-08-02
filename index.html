@@ -14,7 +14,7 @@
     <div id="home-screen" class="screen">
       <div class="top-right-buttons">
         <button id="btn-settings-home" class="icon-btn" title="Settings">⚙️</button>
-        <button id="btn-shop-home" class="icon-btn" title="Shop">🛒</button>
+        <button id="btn-shop-home" class="icon-btn" title="Shipyard">🛠️</button>
       </div>
       <h1 class="title">GALAXY RUNNER</h1>
       <p class="subtitle">Dodge rocks &amp; aliens, collect coins, survive!</p>
@@ -23,12 +23,12 @@
         <div class="mode-card" id="mode-levels">
           <div class="mode-img">🗺️</div>
           <h2>LEVELS</h2>
-          <p>Complete missions,<br/>unlock new ships</p>
+          <p>Complete missions,<br/>earn Rupees</p>
         </div>
         <div class="mode-card" id="mode-infinity">
           <div class="mode-img">♾️</div>
           <h2>INFINITY</h2>
-          <p>No end — survive<br/>as long as you can</p>
+          <p>Choose difficulty,<br/>1 or 2 players</p>
         </div>
       </div>
     </div>
@@ -64,12 +64,18 @@
 
       <!-- HUD: hearts, shield, coins -->
       <div id="hud">
-        <div id="hull-bar" title="Ship hull integrity">
-          <div id="hull-fill"></div>
-          <span id="hull-label">HULL 100%</span>
+        <div id="hull-bars">
+          <div id="hull-bar" title="Player 1 hull integrity">
+            <div id="hull-fill"></div>
+            <span id="hull-label">P1 100%</span>
+          </div>
+          <div id="hull-bar-p2" class="hidden" title="Player 2 hull integrity">
+            <div id="hull-fill-p2"></div>
+            <span id="hull-label-p2">P2 100%</span>
+          </div>
         </div>
         <div id="shield-indicator"></div>
-        <div id="coins">🪙 <span id="coin-count">0</span></div>
+        <div id="coins">💎 <span id="coin-count">0</span></div>
         <button id="btn-pause-ingame" class="icon-btn small" title="Pause (Space)">⏸</button>
       </div>
 
@@ -78,15 +84,28 @@
 
       <canvas id="game-canvas"></canvas>
 
-      <!-- Movement controls: bottom-right -->
+      <!-- Movement controls: Player 1 bottom-right, Player 2 bottom-left (2P mode only) -->
+      <div id="dpad-p2" class="hidden">
+        <button id="btn-up-p2" class="ctrl-btn">▲</button>
+        <div id="dpad-mid-p2" class="dpad-mid">
+          <button id="btn-left-p2" class="ctrl-btn">◀</button>
+          <button id="btn-down-p2" class="ctrl-btn">▼</button>
+          <button id="btn-right-p2" class="ctrl-btn">▶</button>
+        </div>
+      </div>
       <div id="dpad">
         <button id="btn-up" class="ctrl-btn">▲</button>
-        <div id="dpad-mid">
+        <div id="dpad-mid" class="dpad-mid">
           <button id="btn-left" class="ctrl-btn">◀</button>
           <button id="btn-down" class="ctrl-btn">▼</button>
           <button id="btn-right" class="ctrl-btn">▶</button>
         </div>
       </div>
+    </div>
+
+    <!-- ============ INFINITY SETUP WIZARD (difficulty -> players -> ship) ============ -->
+    <div id="overlay-infinity-setup" class="overlay hidden">
+      <div id="infinity-setup-content"></div>
     </div>
 
     <!-- ============ PAUSE OVERLAY ============ -->
@@ -134,9 +153,10 @@
       <button id="btn-close-settings">✖ CLOSE</button>
     </div>
 
-    <!-- ============ SHOP (scrollable ship cards) ============ -->
+    <!-- ============ SHIPYARD (upgrade Blue/Purple ships with Rupees) ============ -->
     <div id="overlay-shop" class="overlay hidden">
-      <h1>🛒 SHIPYARD</h1>
+      <h1>🛠️ SHIPYARD</h1>
+      <p class="rupee-total">💎 <span id="shipyard-rupees">0</span> Rupees</p>
       <div id="shop-list"></div>
       <button id="btn-close-shop">✖ CLOSE</button>
     </div>

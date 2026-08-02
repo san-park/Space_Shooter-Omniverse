@@ -9,14 +9,6 @@ const USERNAME = localStorage.getItem('gr_username') || (() => {
   return n;
 })();
 
-// ---------- Fallback data (used if backend is unreachable) ----------
-const FALLBACK_SHIPS = [
-  { id: 1, name: 'Falcon Starter', cost: 0, speed: 4, power_capacity: 1, fire_rate: 400, shield: 0, unlock_level: 0, color: '#00e5ff' },
-  { id: 2, name: 'Nova Striker', cost: 300, speed: 5, power_capacity: 2, fire_rate: 320, shield: 1, unlock_level: 1, color: '#ff9100' },
-  { id: 3, name: 'Vortex Blade', cost: 700, speed: 6, power_capacity: 3, fire_rate: 260, shield: 2, unlock_level: 2, color: '#7c4dff' },
-  { id: 4, name: 'Titan Cruiser', cost: 1200, speed: 7, power_capacity: 4, fire_rate: 200, shield: 3, unlock_level: 3, color: '#ff1744' },
-  { id: 5, name: 'Phoenix X', cost: 2000, speed: 8, power_capacity: 5, fire_rate: 150, shield: 4, unlock_level: 4, color: '#ffd600' },
-];
 const FALLBACK_LEVELS = [
   { id: 1, level_number: 1, name: 'Asteroid Belt', distance: 3000, alien_count: 5, obstacle_density: 0.20, reward_coins: 150 },
   { id: 2, level_number: 2, name: 'Alien Outpost', distance: 4000, alien_count: 8, obstacle_density: 0.30, reward_coins: 220 },
@@ -25,11 +17,11 @@ const FALLBACK_LEVELS = [
   { id: 5, level_number: 5, name: 'Mothership Gate', distance: 8000, alien_count: 20, obstacle_density: 0.60, reward_coins: 600 },
 ];
 
-// ---------- Local persistent fallback profile ----------
+// ---------- Local persistent profile (Rupees wallet + level progress) ----------
 function loadLocalProfile() {
   const raw = localStorage.getItem('gr_profile');
   if (raw) return JSON.parse(raw);
-  const fresh = { username: USERNAME, coins: 0, hearts: 3, currentShipId: 1, currentLevel: 1, bestScore: 0, ownedShips: [FALLBACK_SHIPS[0]] };
+  const fresh = { username: USERNAME, coins: 0, currentLevel: 1, bestScore: 0 };
   localStorage.setItem('gr_profile', JSON.stringify(fresh));
   return fresh;
 }
@@ -44,55 +36,12 @@ const Api = {
       return await r.json();
     } catch (e) { return loadLocalProfile(); }
   },
-  async getShips() {
-    try {
-      const r = await fetch(`${API_BASE}/spaceships`);
-      if (!r.ok) throw new Error();
-      return await r.json();
-    } catch (e) { return FALLBACK_SHIPS; }
-  },
   async getLevels() {
     try {
       const r = await fetch(`${API_BASE}/levels`);
       if (!r.ok) throw new Error();
       return await r.json();
     } catch (e) { return FALLBACK_LEVELS; }
-  },
-  async buyShip(shipId) {
-    try {
-      const r = await fetch(`${API_BASE}/player/${USERNAME}/buy-ship`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shipId })
-      });
-      const data = await r.json();
-      if (!r.ok) return { error: data.error };
-      return data;
-    } catch (e) {
-      const p = loadLocalProfile();
-      const ship = FALLBACK_SHIPS.find(s => s.id === shipId);
-      if (!ship) return { error: 'Ship not found' };
-      if (p.ownedShips.find(s => s.id === shipId)) return { error: 'Ship already owned' };
-      if (p.coins < ship.cost) return { error: 'Not enough coins' };
-      if (p.currentLevel < ship.unlock_level) return { error: 'Level not reached yet' };
-      p.coins -= ship.cost;
-      p.ownedShips.push(ship);
-      saveLocalProfile(p);
-      return p;
-    }
-  },
-  async selectShip(shipId) {
-    try {
-      const r = await fetch(`${API_BASE}/player/${USERNAME}/select-ship`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shipId })
-      });
-      return await r.json();
-    } catch (e) {
-      const p = loadLocalProfile();
-      p.currentShipId = shipId;
-      saveLocalProfile(p);
-      return p;
-    }
   },
   async reportLevelResult(levelId, won, coinsCollected) {
     try {
@@ -117,10 +66,7 @@ const Api = {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ score })
       });
-      const data = await r.json();
-      // Infinity mode also pays out any coins collected during the run
-      if (coinsCollected) return await this.reportInfinityCoins(coinsCollected, data);
-      return data;
+      return await r.json();
     } catch (e) {
       const p = loadLocalProfile();
       p.bestScore = Math.max(p.bestScore || 0, score);
@@ -129,16 +75,78 @@ const Api = {
       return p;
     }
   },
-  async reportInfinityCoins(coinsCollected) {
-    // Re-use the level-result endpoint with a fake "no level" won:false path is not ideal,
-    // so for the live backend we just add coins directly via a tiny local calc + best score already saved.
-    try {
-      const r = await fetch(`${API_BASE}/player/${USERNAME}`);
-      const data = await r.json();
-      return data;
-    } catch (e) { return loadLocalProfile(); }
-  }
 };
+
+// ==========================================================
+// CHARACTERS: Blue & Purple ships, each with its own Attack/Health/Speed
+// upgrade track (0-10 per ability, paid for with Rupees). Maxing all three
+// at once lets the ship "break through" to the next ship level (max 5).
+// ==========================================================
+const CHAR_IDS = ['blue', 'purple'];
+const CHAR_META = {
+  blue: { name: 'Blue Fighter', img: 'assets/ships/blue.png', glow: '#00c8ff' },
+  purple: { name: 'Purple Fighter', img: 'assets/ships/purple.png', glow: '#a259ff' },
+};
+const ABILITIES = ['attack', 'health', 'speed'];
+
+function loadCharacters() {
+  const raw = localStorage.getItem('gr_characters');
+  if (raw) return JSON.parse(raw);
+  const fresh = {
+    blue: { level: 1, attackLv: 0, healthLv: 0, speedLv: 0 },
+    purple: { level: 1, attackLv: 0, healthLv: 0, speedLv: 0 },
+  };
+  localStorage.setItem('gr_characters', JSON.stringify(fresh));
+  return fresh;
+}
+function saveCharacters() { localStorage.setItem('gr_characters', JSON.stringify(CHARACTERS)); }
+let CHARACTERS = loadCharacters();
+let equippedChar = localStorage.getItem('gr_equipped') || 'blue';
+function setEquipped(id) { equippedChar = id; localStorage.setItem('gr_equipped', id); }
+
+function upgradeCost(charId, ability) {
+  const c = CHARACTERS[charId];
+  const lv = c[ability + 'Lv'];
+  return Math.round(40 * (lv + 1) * (1 + (c.level - 1) * 0.5));
+}
+function canBreakthrough(charId) {
+  const c = CHARACTERS[charId];
+  return c.attackLv >= 10 && c.healthLv >= 10 && c.speedLv >= 10 && c.level < 5;
+}
+function upgradeAbility(charId, ability) {
+  const c = CHARACTERS[charId];
+  if (c[ability + 'Lv'] >= 10) return false;
+  const cost = upgradeCost(charId, ability);
+  if (state.profile.coins < cost) return false;
+  state.profile.coins -= cost;
+  c[ability + 'Lv'] += 1;
+  saveCharacters();
+  persistRupees();
+  return true;
+}
+function doBreakthrough(charId) {
+  if (!canBreakthrough(charId)) return false;
+  const c = CHARACTERS[charId];
+  c.level = Math.min(5, c.level + 1);
+  c.attackLv = 0; c.healthLv = 0; c.speedLv = 0;
+  saveCharacters();
+  return true;
+}
+function persistRupees() {
+  const p = loadLocalProfile();
+  p.coins = state.profile.coins;
+  saveLocalProfile(p);
+}
+function shipStats(charId) {
+  const c = CHARACTERS[charId];
+  return {
+    speed: 4 + c.speedLv * 0.35 + (c.level - 1) * 0.7,
+    fireRate: Math.max(90, 380 - c.attackLv * 18 - (c.level - 1) * 25),
+    maxHearts: Math.min(8, 3 + Math.floor(c.healthLv / 3) + (c.level - 1)),
+    armor: c.level - 1,
+    color: CHAR_META[charId].glow,
+  };
+}
 
 // ==========================================================
 // SOUND ENGINE (synthesized with Web Audio API - no audio files needed)
@@ -193,6 +201,8 @@ const Sound = {
   },
   hit() { this.tone(180, 60, 0.35, 'square', 0.18); },
   click() { this.tone(440, 440, 0.05, 'square', 0.05); },
+  upgrade() { this.tone(400, 1000, 0.2, 'triangle', 0.12); },
+  breakthrough() { [400, 600, 900, 1300].forEach((f, i) => setTimeout(() => this.tone(f, f, 0.2, 'triangle', 0.14), i * 110)); },
   win() { if (this.soundOn) [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.tone(f, f, 0.18, 'triangle', 0.12), i * 130)); },
   lose() { if (this.soundOn) [400, 320, 240, 160].forEach((f, i) => setTimeout(() => this.tone(f, f * 0.8, 0.25, 'sawtooth', 0.12), i * 150)); },
 
@@ -230,14 +240,7 @@ const Sound = {
 // ==========================================================
 const ASSET_PATHS = {
   bg: 'assets/bg-space.jpg',
-  ships: {
-    1: 'assets/ships/falcon.png',
-    2: 'assets/ships/nova.png',
-    3: 'assets/ships/vortex.png',
-    4: 'assets/ships/titan.png',
-    5: 'assets/ships/phoenix.png',
-  },
-  // ordered weakest -> strongest; higher levels / higher Infinity score pull from further down the list
+  ships: { blue: CHAR_META.blue.img, purple: CHAR_META.purple.img },
   aliens: [
     'assets/aliens/saucer_small.png',
     'assets/aliens/saucer_medium.png',
@@ -247,8 +250,8 @@ const ASSET_PATHS = {
   ],
   rocks: ['assets/rocks/rock1.png', 'assets/rocks/rock2.png', 'assets/rocks/rock3.png'],
 };
-const SHIP_ROTATION_DEG = 18;   // corrects the ship art (drawn nose-up-left) to point straight up
-const ALIEN_ROTATION_DEG = 160; // aliens face roughly downward, toward the player
+const SHIP_ROTATION_DEG = 0; // the blue/purple ship art is already drawn pointing straight up
+const ALIEN_ROTATION_DEG = 160;
 
 const Images = { bg: null, ships: {}, aliens: [], rocks: [] };
 function loadImage(src) {
@@ -300,6 +303,7 @@ const Overlays = {
   lose: document.getElementById('overlay-lose'),
   settings: document.getElementById('overlay-settings'),
   shop: document.getElementById('overlay-shop'),
+  infinitySetup: document.getElementById('overlay-infinity-setup'),
 };
 function showOverlay(name) {
   Object.values(Overlays).forEach(o => o.classList.add('hidden'));
@@ -307,8 +311,11 @@ function showOverlay(name) {
 }
 
 const HUD = {
+  hullBarP2: document.getElementById('hull-bar-p2'),
   hullFill: document.getElementById('hull-fill'),
   hullLabel: document.getElementById('hull-label'),
+  hullFillP2: document.getElementById('hull-fill-p2'),
+  hullLabelP2: document.getElementById('hull-label-p2'),
   shield: document.getElementById('shield-indicator'),
   coinCount: document.getElementById('coin-count'),
   pathFill: document.getElementById('path-fill'),
@@ -319,6 +326,7 @@ const HUD = {
   scoreCurrent: document.getElementById('score-current'),
   scoreBest: document.getElementById('score-best'),
   activePowers: document.getElementById('active-powers'),
+  dpadP2: document.getElementById('dpad-p2'),
 };
 
 // ==========================================================
@@ -329,32 +337,28 @@ const POWER_TYPES = {
   speed:     { icon: '💨', duration: 7000 },
   magnet:    { icon: '🧲', duration: 9000 },
   shield:    { icon: '🛡️', duration: 6000 },
-  heart:     { icon: '❤️', duration: 0 }, // instant, not timed
+  heart:     { icon: '❤️', duration: 0 },
 };
+const DIFFICULTY_BASE = { easy: 0.7, normal: 1.0, hard: 1.4 };
 
 const state = {
-  profile: null, ships: [], levels: [],
-  mode: 'levels',           // 'levels' | 'infinity'
+  profile: null, levels: [],
+  mode: 'levels',            // 'levels' | 'infinity'
+  difficulty: 'normal',
+  playerCount: 1,
+  selectedChars: ['blue'],
   currentLevel: null,
   running: false, paused: false,
   distance: 0, score: 0,
   coinsThisRun: 0,
-  hearts: 3, shipArmor: 0,
-  invincibleUntil: 0,
-  lastShotAt: 0,
-  activePowers: {},         // { type: expiryTimestamp }
-  keys: { left: false, right: false, up: false, down: false },
-  player: { x: 0, y: 0, w: 34, h: 50 },
-  obstacles: [], aliens: [], bullets: [], alienBullets: [], coins: [], powerups: [],
+  players: [],
+  bullets: [], alienBullets: [],
+  obstacles: [], aliens: [], coins: [], powerups: [],
   lastSpawn: 0, bgOffset: 0,
 };
 
-function currentShip() {
-  const id = state.profile ? state.profile.currentShipId : 1;
-  return state.ships.find(s => s.id === id) || state.ships[0];
-}
-function isPowerActive(type) {
-  return state.activePowers[type] && performance.now() < state.activePowers[type];
+function isPowerActive(player, type) {
+  return player.activePowers[type] && performance.now() < player.activePowers[type];
 }
 
 // ==========================================================
@@ -362,26 +366,20 @@ function isPowerActive(type) {
 // ==========================================================
 async function init() {
   resizeCanvas();
-  const [profile, ships, levels] = await Promise.all([Api.getPlayer(), Api.getShips(), Api.getLevels()]);
-  await preloadAssets();
+  const [profile, levels] = await Promise.all([Api.getPlayer(), Api.getLevels()]);
   state.profile = normalizeProfile(profile);
-  state.ships = ships;
   state.levels = levels;
+  await preloadAssets();
   applySettingsToUI();
   showScreen('home');
 }
-
 function normalizeProfile(p) {
   return {
     coins: p.coins,
-    hearts: p.hearts ?? 3,
-    currentShipId: p.currentShipId ?? p.current_ship_id,
-    currentLevel: p.currentLevel ?? p.current_level,
+    currentLevel: p.currentLevel ?? p.current_level ?? 1,
     bestScore: p.bestScore ?? p.best_score ?? 0,
-    ownedShips: p.ownedShips ?? [],
   };
 }
-
 function applySettingsToUI() {
   document.getElementById('toggle-music').checked = Sound.musicOn;
   document.getElementById('toggle-sound').checked = Sound.soundOn;
@@ -409,25 +407,118 @@ function renderLevelSelect() {
 }
 
 // ==========================================================
+// INFINITY SETUP WIZARD: Difficulty -> Players -> Ship -> Confirm
+// ==========================================================
+function startInfinityWizard() {
+  state.difficulty = 'normal';
+  state.playerCount = 1;
+  state.selectedChars = ['blue'];
+  showOverlay('infinitySetup');
+  renderWizardDifficulty();
+}
+function wizCard(id, icon, label) {
+  return `<div class="wizard-card" id="${id}"><div class="w-icon">${icon}</div><span>${label}</span></div>`;
+}
+function renderWizardDifficulty() {
+  const el = document.getElementById('infinity-setup-content');
+  el.innerHTML = `
+    <div class="wizard-title">SELECT DIFFICULTY</div>
+    <div class="wizard-options">
+      ${wizCard('wiz-diff-easy', '😌', 'EASY')}
+      ${wizCard('wiz-diff-normal', '⚔️', 'NORMAL')}
+      ${wizCard('wiz-diff-hard', '💀', 'HARD')}
+    </div>`;
+  ['easy', 'normal', 'hard'].forEach(d => {
+    document.getElementById('wiz-diff-' + d).onclick = () => { Sound.click(); state.difficulty = d; renderWizardPlayers(); };
+  });
+}
+function renderWizardPlayers() {
+  const el = document.getElementById('infinity-setup-content');
+  el.innerHTML = `
+    <div class="wizard-title">PLAYERS</div>
+    <div class="wizard-options">
+      ${wizCard('wiz-p1', '🧑\u200d🚀', '1 PLAYER')}
+      ${wizCard('wiz-p2', '👥', '2 PLAYERS')}
+    </div>
+    <button class="wizard-back" id="wiz-back-1">◀ BACK</button>`;
+  document.getElementById('wiz-p1').onclick = () => { Sound.click(); state.playerCount = 1; renderWizardShipSelect(); };
+  document.getElementById('wiz-p2').onclick = () => { Sound.click(); state.playerCount = 2; state.selectedChars = ['blue', 'purple']; renderWizardConfirm(); };
+  document.getElementById('wiz-back-1').onclick = () => { Sound.click(); renderWizardDifficulty(); };
+}
+function shipPickCard(id) {
+  const c = CHARACTERS[id];
+  return `<div class="wizard-card ship-card-pick" id="wiz-ship-${id}">
+    <img src="${CHAR_META[id].img}" alt="${CHAR_META[id].name}" />
+    <span>${CHAR_META[id].name}</span>
+    <span style="opacity:.7">Lv ${c.level}</span>
+  </div>`;
+}
+function renderWizardShipSelect() {
+  const el = document.getElementById('infinity-setup-content');
+  el.innerHTML = `
+    <div class="wizard-title">CHOOSE YOUR SHIP</div>
+    <div class="wizard-options">
+      ${shipPickCard('blue')}
+      ${shipPickCard('purple')}
+    </div>
+    <button class="wizard-back" id="wiz-back-2">◀ BACK</button>`;
+  CHAR_IDS.forEach(id => {
+    document.getElementById('wiz-ship-' + id).onclick = () => { Sound.click(); state.selectedChars = [id]; renderWizardConfirm(); };
+  });
+  document.getElementById('wiz-back-2').onclick = () => { Sound.click(); renderWizardPlayers(); };
+}
+function renderWizardConfirm() {
+  const el = document.getElementById('infinity-setup-content');
+  const names = state.selectedChars.map(id => CHAR_META[id].name).join(' & ');
+  el.innerHTML = `
+    <div class="wizard-title">READY?</div>
+    <p class="wizard-summary">${state.difficulty.toUpperCase()} &nbsp;&middot;&nbsp; ${state.playerCount === 2 ? '2 Players' : '1 Player'} &nbsp;&middot;&nbsp; ${names}</p>
+    <button id="wiz-start">▶ START</button>
+    <button class="wizard-back" id="wiz-back-3">◀ BACK</button>`;
+  document.getElementById('wiz-start').onclick = () => { Sound.click(); showOverlay(null); startInfinity(); };
+  document.getElementById('wiz-back-3').onclick = () => {
+    Sound.click();
+    if (state.playerCount === 2) renderWizardPlayers(); else renderWizardShipSelect();
+  };
+}
+
+// ==========================================================
 // RUN LIFECYCLE (shared by Levels + Infinity)
 // ==========================================================
+function buildPlayers(chars) {
+  const count = chars.length;
+  const spacing = canvas.width / (count + 1);
+  return chars.map((char, i) => {
+    const stats = shipStats(char);
+    return {
+      char, index: i,
+      x: spacing * (i + 1) - 17, y: canvas.height - 130,
+      w: 34, h: 50,
+      hearts: stats.maxHearts, maxHearts: stats.maxHearts, armor: stats.armor,
+      alive: true, invincibleUntil: 0, lastShotAt: 0,
+      activePowers: {},
+      keys: { left: false, right: false, up: false, down: false },
+    };
+  });
+}
 function resetRunState() {
   state.distance = 0;
   state.score = 0;
   state.coinsThisRun = 0;
-  state.hearts = 3;
-  state.shipArmor = currentShip().shield || 0;
-  state.activePowers = {};
   state.obstacles = []; state.aliens = []; state.bullets = [];
   state.alienBullets = []; state.coins = []; state.powerups = [];
   state.lastSpawn = 0;
   state.paused = false;
+  state.bgOffset = 0;
 
   resizeCanvas();
-  state.player.x = canvas.width / 2 - state.player.w / 2;
-  state.player.y = canvas.height - 130;
+  state.players = buildPlayers(state.selectedChars);
 
-  renderHull();
+  HUD.hullBarP2.classList.toggle('hidden', state.selectedChars.length < 2);
+  HUD.dpadP2.classList.toggle('hidden', state.selectedChars.length < 2);
+
+  renderHull(0);
+  if (state.selectedChars.length > 1) renderHull(1);
   renderShieldIndicator();
   HUD.coinCount.textContent = state.profile.coins;
   renderActivePowerBadges();
@@ -436,6 +527,8 @@ function resetRunState() {
 function startLevel(levelNumber) {
   const level = state.levels.find(l => l.level_number === levelNumber) || state.levels[0];
   state.mode = 'levels';
+  state.difficulty = 'normal';
+  state.selectedChars = [equippedChar];
   state.currentLevel = level;
   resetRunState();
 
@@ -450,7 +543,7 @@ function startLevel(levelNumber) {
 
 function startInfinity() {
   state.mode = 'infinity';
-  state.currentLevel = { obstacle_density: 0.2, alien_count: 4 }; // base difficulty, scales with score
+  state.currentLevel = { obstacle_density: 0.2, alien_count: 4 };
   resetRunState();
 
   HUD.pathBar.classList.add('hidden');
@@ -470,38 +563,47 @@ function beginRunLoop() {
   requestAnimationFrame(loop);
 }
 
-function renderHull() {
-  const pct = Math.max(0, Math.round((state.hearts / 3) * 100));
-  HUD.hullFill.style.width = pct + '%';
-  HUD.hullLabel.textContent = 'HULL ' + pct + '%';
-  let color = 'linear-gradient(90deg,#2ecc71,#27ae60)'; // healthy - green
-  if (pct <= 33) color = 'linear-gradient(90deg,#ff5252,#c62828)';       // critical - red
-  else if (pct <= 66) color = 'linear-gradient(90deg,#ffca28,#ff9100)'; // damaged - amber
-  HUD.hullFill.style.background = color;
+function renderHull(idx) {
+  const p = state.players[idx];
+  if (!p) return;
+  const pct = Math.max(0, Math.round((p.hearts / p.maxHearts) * 100));
+  const fillEl = idx === 0 ? HUD.hullFill : HUD.hullFillP2;
+  const labelEl = idx === 0 ? HUD.hullLabel : HUD.hullLabelP2;
+  fillEl.style.width = pct + '%';
+  labelEl.textContent = `P${idx + 1} ${pct}%`;
+  let color = 'linear-gradient(90deg,#2ecc71,#27ae60)';
+  if (pct <= 33) color = 'linear-gradient(90deg,#ff5252,#c62828)';
+  else if (pct <= 66) color = 'linear-gradient(90deg,#ffca28,#ff9100)';
+  fillEl.style.background = color;
 }
 function renderShieldIndicator() {
-  HUD.shield.textContent = state.shipArmor > 0 ? `🛡️ x${state.shipArmor}` : '';
+  const armors = state.players.filter(p => p.alive && p.armor > 0).map(p => `P${p.index + 1} 🛡️x${p.armor}`);
+  HUD.shield.textContent = armors.join('  ');
 }
 function renderActivePowerBadges() {
   const now = performance.now();
   HUD.activePowers.innerHTML = '';
-  Object.entries(state.activePowers).forEach(([type, until]) => {
-    const remaining = Math.max(0, Math.ceil((until - now) / 1000));
-    if (remaining <= 0) return;
-    const def = POWER_TYPES[type];
-    const badge = document.createElement('div');
-    badge.className = 'power-badge';
-    badge.innerHTML = `<span class="p-icon">${def.icon}</span><span class="p-time">${remaining}s</span>`;
-    HUD.activePowers.appendChild(badge);
+  state.players.forEach(p => {
+    Object.entries(p.activePowers).forEach(([type, until]) => {
+      const remaining = Math.max(0, Math.ceil((until - now) / 1000));
+      if (remaining <= 0) return;
+      const def = POWER_TYPES[type];
+      const badge = document.createElement('div');
+      badge.className = 'power-badge';
+      const prefix = state.players.length > 1 ? `P${p.index + 1} ` : '';
+      badge.innerHTML = `<span class="p-icon">${def.icon}</span><span class="p-time">${prefix}${remaining}s</span>`;
+      HUD.activePowers.appendChild(badge);
+    });
   });
 }
 
 // ==========================================================
-// DIFFICULTY (Infinity mode scales with score)
+// DIFFICULTY (Infinity mode scales with score + chosen difficulty)
 // ==========================================================
 function difficultyMultiplier() {
   if (state.mode !== 'infinity') return 1;
-  return 1 + Math.min(2.5, Math.floor(state.score / 250) * 0.18);
+  const base = DIFFICULTY_BASE[state.difficulty] || 1;
+  return base * (1 + Math.min(2.5, Math.floor(state.score / 250) * 0.18));
 }
 
 // ==========================================================
@@ -510,13 +612,12 @@ function difficultyMultiplier() {
 function maybeSpawn(dt, now) {
   const mult = difficultyMultiplier();
   const baseDensity = state.currentLevel.obstacle_density * mult;
-  const spawnInterval = Math.max(180, (900 - baseDensity * 900) / mult);
+  const spawnInterval = Math.max(160, (900 - baseDensity * 900) / mult);
   if (now - state.lastSpawn < spawnInterval) return;
   state.lastSpawn = now;
 
   const roll = Math.random();
   if (roll < 0.42) {
-    // obstacle: rock of varied size, falls straight down (no horizontal drift)
     const size = 26 + Math.random() * 34;
     state.obstacles.push({
       x: Math.random() * (canvas.width - size), y: -size,
@@ -536,7 +637,6 @@ function maybeSpawn(dt, now) {
   } else if (roll < 0.85) {
     state.coins.push({ x: Math.random() * (canvas.width - 20), y: -20, w: 20, h: 20, vy: 2.5 * mult });
   } else {
-    // power-up pickup - pick a random type
     const types = Object.keys(POWER_TYPES);
     const type = types[Math.floor(Math.random() * types.length)];
     const size = 26;
@@ -548,35 +648,41 @@ function maybeSpawn(dt, now) {
 // UPDATE
 // ==========================================================
 function update(dt, now) {
-  const ship = currentShip();
-  const speedBoost = isPowerActive('speed') ? 1.6 : 1;
-  const speed = ship.speed * speedBoost * (dt / 16.67);
+  const anyAlive = state.players.some(p => p.alive);
+  if (!anyAlive) return loseRun();
 
-  if (state.keys.left) state.player.x -= speed;
-  if (state.keys.right) state.player.x += speed;
-  if (state.keys.up) state.player.y -= speed;
-  if (state.keys.down) state.player.y += speed;
-  state.player.x = Math.max(4, Math.min(canvas.width - state.player.w - 4, state.player.x));
-  state.player.y = Math.max(4, Math.min(canvas.height - state.player.h - 4, state.player.y));
+  state.players.forEach(p => {
+    if (!p.alive) return;
+    const stats = shipStats(p.char);
+    const speedBoost = isPowerActive(p, 'speed') ? 1.6 : 1;
+    const speed = stats.speed * speedBoost * (dt / 16.67);
 
-  // Auto-fire (double gun fires two parallel bullets)
-  if (now - state.lastShotAt > ship.fire_rate) {
-    state.lastShotAt = now;
-    if (isPowerActive('doubleGun')) {
-      state.bullets.push({ x: state.player.x + 4, y: state.player.y, w: 6, h: 14, vy: -9 });
-      state.bullets.push({ x: state.player.x + state.player.w - 10, y: state.player.y, w: 6, h: 14, vy: -9 });
-    } else {
-      state.bullets.push({ x: state.player.x + state.player.w / 2 - 3, y: state.player.y, w: 6, h: 14, vy: -9 });
+    if (p.keys.left) p.x -= speed;
+    if (p.keys.right) p.x += speed;
+    if (p.keys.up) p.y -= speed;
+    if (p.keys.down) p.y += speed;
+    p.x = Math.max(4, Math.min(canvas.width - p.w - 4, p.x));
+    p.y = Math.max(4, Math.min(canvas.height - p.h - 4, p.y));
+
+    if (now - p.lastShotAt > stats.fireRate) {
+      p.lastShotAt = now;
+      if (isPowerActive(p, 'doubleGun')) {
+        state.bullets.push({ x: p.x + 4, y: p.y, w: 6, h: 14, vy: -9 });
+        state.bullets.push({ x: p.x + p.w - 10, y: p.y, w: 6, h: 14, vy: -9 });
+      } else {
+        state.bullets.push({ x: p.x + p.w / 2 - 3, y: p.y, w: 6, h: 14, vy: -9 });
+      }
+      Sound.shoot();
     }
-    Sound.shoot();
-  }
+  });
 
+  const leadShip = shipStats(state.players[0].char);
   if (state.mode === 'levels') {
-    state.distance += (2.6 + ship.speed * 0.15) * (dt / 16.67);
+    state.distance += (2.6 + leadShip.speed * 0.15) * (dt / 16.67);
   } else {
-    state.score += (0.6 + ship.speed * 0.05) * (dt / 16.67) * difficultyMultiplier();
+    state.score += (0.6 + leadShip.speed * 0.05) * (dt / 16.67) * difficultyMultiplier();
   }
-  state.bgOffset += (1.2 + ship.speed * 0.25) * difficultyMultiplier() * speedBoost * (dt / 16.67);
+  state.bgOffset += (1.2 + leadShip.speed * 0.25) * difficultyMultiplier() * (dt / 16.67);
 
   maybeSpawn(dt, now);
   moveEntities(state.obstacles, dt);
@@ -585,15 +691,15 @@ function update(dt, now) {
   moveEntities(state.bullets, dt, true);
   moveEntities(state.alienBullets, dt);
 
-  // Magnet: pull coins toward the ship
-  if (isPowerActive('magnet')) {
-    const px = state.player.x + state.player.w / 2, py = state.player.y + state.player.h / 2;
+  state.players.forEach(p => {
+    if (!p.alive || !isPowerActive(p, 'magnet')) return;
+    const px = p.x + p.w / 2, py = p.y + p.h / 2;
     state.coins.forEach(c => {
       const dx = px - (c.x + c.w / 2), dy = py - (c.y + c.h / 2);
       const dist = Math.max(1, Math.hypot(dx, dy));
       if (dist < 260) { c.x += (dx / dist) * 6 * (dt / 16.67); c.y += (dy / dist) * 6 * (dt / 16.67); }
     });
-  }
+  });
 
   state.aliens.forEach(a => {
     a.y += a.vy * (dt / 16.67);
@@ -605,7 +711,6 @@ function update(dt, now) {
   });
   state.aliens = state.aliens.filter(a => a.y < canvas.height + 50);
 
-  // Bullets vs aliens / obstacles
   state.bullets.forEach(b => {
     state.aliens.forEach(a => { if (!b.dead && !a.dead && rectsOverlap(b, a)) { b.dead = true; a.dead = true; addScoreOrCoins(5); Sound.explosion(); } });
     state.obstacles.forEach(o => { if (!b.dead && !o.dead && rectsOverlap(b, o)) { b.dead = true; o.dead = true; Sound.explosion(); } });
@@ -614,29 +719,30 @@ function update(dt, now) {
   state.aliens = state.aliens.filter(a => !a.dead);
   state.obstacles = state.obstacles.filter(o => !o.dead);
 
-  // Coin pickups
-  state.coins.forEach(c => { if (!c.dead && rectsOverlap(state.player, c)) { c.dead = true; state.coinsThisRun += 10; Sound.coin(); } });
+  state.coins.forEach(c => {
+    if (c.dead) return;
+    const hitBy = state.players.find(p => p.alive && rectsOverlap(p, c));
+    if (hitBy) { c.dead = true; state.coinsThisRun += 10; Sound.coin(); }
+  });
   state.coins = state.coins.filter(c => !c.dead);
 
-  // Power-up pickups
-  state.powerups.forEach(p => {
-    if (!p.dead && rectsOverlap(state.player, p)) {
-      p.dead = true;
-      catchPower(p.type, now);
+  state.powerups.forEach(pw => {
+    if (pw.dead) return;
+    const hitBy = state.players.find(p => p.alive && rectsOverlap(p, pw));
+    if (hitBy) { pw.dead = true; catchPower(hitBy, pw.type, now); }
+  });
+  state.powerups = state.powerups.filter(pw => !pw.dead);
+
+  state.players.forEach(p => {
+    if (!p.alive) return;
+    const invincible = isPowerActive(p, 'shield') || now < p.invincibleUntil;
+    if (!invincible) {
+      const hit = [...state.obstacles, ...state.aliens, ...state.alienBullets].some(e => rectsOverlap(p, e));
+      if (hit) onPlayerHit(p, now);
     }
   });
-  state.powerups = state.powerups.filter(p => !p.dead);
-
-  // Collisions with player
-  const shieldActive = isPowerActive('shield');
-  const invincible = shieldActive || now < state.invincibleUntil;
-  if (!invincible) {
-    const hit = [...state.obstacles, ...state.aliens, ...state.alienBullets].some(e => rectsOverlap(state.player, e));
-    if (hit) onPlayerHit(now);
-  }
   state.alienBullets = state.alienBullets.filter(b => b.y < canvas.height + 30);
 
-  // HUD
   if (state.mode === 'levels') {
     const pct = Math.min(100, (state.distance / state.currentLevel.distance) * 100);
     HUD.pathFill.style.width = pct + '%';
@@ -648,15 +754,15 @@ function update(dt, now) {
     HUD.coinCount.textContent = state.profile.coins + state.coinsThisRun;
   }
   renderActivePowerBadges();
+  renderShieldIndicator();
 
-  if (state.hearts <= 0) return loseRun();
+  if (state.players.every(p => !p.alive)) return loseRun();
 }
 
 function addScoreOrCoins(coinValue) {
   state.coinsThisRun += coinValue;
   if (state.mode === 'infinity') state.score += coinValue * 2;
 }
-
 function moveEntities(list, dt, isBullet) {
   list.forEach(e => { e.y += (e.vy || 0) * (dt / 16.67); });
   const filtered = list.filter(e => isBullet ? e.y > -30 : e.y < canvas.height + 40);
@@ -665,28 +771,24 @@ function moveEntities(list, dt, isBullet) {
 function rectsOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
-
-function catchPower(type, now) {
+function catchPower(player, type, now) {
   if (type === 'heart') {
-    state.hearts = Math.min(5, state.hearts + 1);
-    renderHull();
+    player.hearts = Math.min(player.maxHearts, player.hearts + 1);
+    renderHull(player.index);
   } else {
-    const def = POWER_TYPES[type];
-    state.activePowers[type] = now + def.duration; // stacks/refreshes independently of other powers
+    player.activePowers[type] = now + POWER_TYPES[type].duration;
   }
   Sound.power(type);
   renderActivePowerBadges();
 }
-
-function onPlayerHit(now) {
-  if (state.shipArmor > 0) {
-    state.shipArmor -= 1;
-    renderShieldIndicator();
-  } else {
-    state.hearts -= 1;
-    renderHull();
+function onPlayerHit(player, now) {
+  if (player.armor > 0) { player.armor -= 1; renderShieldIndicator(); }
+  else {
+    player.hearts -= 1;
+    renderHull(player.index);
+    if (player.hearts <= 0) player.alive = false;
   }
-  state.invincibleUntil = now + 1100;
+  player.invincibleUntil = now + 1100;
   canvas.classList.add('shake');
   setTimeout(() => canvas.classList.remove('shake'), 200);
   Sound.hit();
@@ -695,7 +797,6 @@ function onPlayerHit(now) {
 // ==========================================================
 // DRAW
 // ==========================================================
-const ROCK_EMOJI = '🪨'; // fallback if an image asset fails to load
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawScrollingBackground();
@@ -707,7 +808,6 @@ function draw() {
   state.powerups.forEach(p => ctx.fillText(POWER_TYPES[p.type].icon, p.x, p.y + 20));
 
   state.obstacles.forEach(o => drawRock(o));
-
   state.aliens.forEach(a => drawAlien(a));
 
   ctx.fillStyle = '#00e5ff';
@@ -715,11 +815,11 @@ function draw() {
   ctx.fillStyle = '#ff1744';
   state.alienBullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
 
-  drawShip();
+  state.players.forEach(p => { if (p.alive) drawShip(p); });
 }
 
 function drawScrollingBackground() {
-  if (!Images.bg) return; // CSS gradient behind the canvas still shows if the image failed to load
+  if (!Images.bg) return;
   const scale = canvas.width / Images.bg.width;
   const tileH = Images.bg.height * scale;
   let y = state.bgOffset % tileH;
@@ -727,20 +827,13 @@ function drawScrollingBackground() {
     ctx.drawImage(Images.bg, 0, drawY, canvas.width, tileH);
   }
 }
-
 function drawRock(o) {
   const img = Images.rocks[o.imgIndex];
-  if (img) {
-    ctx.drawImage(img, o.x, o.y, o.w, o.w * (img.height / img.width));
-  } else {
-    ctx.font = `${o.w}px sans-serif`;
-    ctx.fillText(ROCK_EMOJI, o.x, o.y + o.h);
-  }
+  if (img) ctx.drawImage(img, o.x, o.y, o.w, o.w * (img.height / img.width));
 }
-
 function drawAlien(a) {
   const img = Images.aliens[a.tier];
-  if (!img) { ctx.font = '26px sans-serif'; ctx.fillText('👾', a.x, a.y + 24); return; }
+  if (!img) return;
   const cx = a.x + a.w / 2, cy = a.y + a.h / 2;
   ctx.save();
   ctx.translate(cx, cy);
@@ -748,31 +841,19 @@ function drawAlien(a) {
   ctx.drawImage(img, -a.w / 2, -a.h / 2, a.w, a.h);
   ctx.restore();
 }
-
-function drawShip() {
-  const ship = currentShip();
+function drawShip(p) {
   const now = performance.now();
-  const invincible = isPowerActive('shield') || now < state.invincibleUntil;
-  const cx = state.player.x + state.player.w / 2;
-  const cy = state.player.y + state.player.h / 2;
-  const img = Images.ships[ship.id];
+  const invincible = isPowerActive(p, 'shield') || now < p.invincibleUntil;
+  const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+  const img = Images.ships[p.char];
 
   ctx.save();
   ctx.translate(cx, cy);
-  if (invincible) { ctx.shadowColor = isPowerActive('shield') ? '#ffd600' : '#00e5ff'; ctx.shadowBlur = 22; }
-
+  if (invincible) { ctx.shadowColor = isPowerActive(p, 'shield') ? '#ffd600' : CHAR_META[p.char].glow; ctx.shadowBlur = 22; }
   if (img) {
-    ctx.rotate((SHIP_ROTATION_DEG * Math.PI) / 180);
-    const dispW = 48, dispH = 48 * (img.height / img.width);
+    if (SHIP_ROTATION_DEG) ctx.rotate((SHIP_ROTATION_DEG * Math.PI) / 180);
+    const dispW = 42, dispH = 42 * (img.height / img.width);
     ctx.drawImage(img, -dispW / 2, -dispH / 2, dispW, dispH);
-  } else {
-    ctx.rotate(-Math.PI / 4);
-    ctx.font = '38px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🚀', 0, 0);
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
   }
   ctx.restore();
 }
@@ -790,7 +871,6 @@ function loop(now) {
   draw();
   requestAnimationFrame(loop);
 }
-
 function togglePause() {
   if (!state.running) return;
   state.paused = !state.paused;
@@ -806,14 +886,14 @@ async function winLevel() {
   Sound.stopMusic(); Sound.win();
   const totalCoins = state.coinsThisRun + state.currentLevel.reward_coins;
   document.getElementById('win-summary').textContent =
-    `Level ${state.currentLevel.level_number} cleared! +${totalCoins} coins earned.`;
+    `Level ${state.currentLevel.level_number} cleared! +${totalCoins} Rupees earned.`;
   const updated = await Api.reportLevelResult(state.currentLevel.id, true, state.coinsThisRun);
   state.profile = normalizeProfile(updated);
   HUD.coinCount.textContent = state.profile.coins;
   showOverlay('win');
 }
-
 async function loseRun() {
+  if (!state.running) return;
   state.running = false;
   Sound.stopMusic(); Sound.lose();
   const loseTitle = document.getElementById('lose-title');
@@ -825,75 +905,72 @@ async function loseRun() {
     state.profile = normalizeProfile(updated);
     const best = Math.max(state.profile.bestScore, Math.floor(state.score));
     state.profile.bestScore = best;
-    loseSummary.textContent = `Score: ${Math.floor(state.score)}   Best: ${best}   Coins: ${state.coinsThisRun}`;
+    loseSummary.textContent = `Score: ${Math.floor(state.score)}   Best: ${best}   Rupees: ${state.coinsThisRun}`;
   } else {
     loseTitle.textContent = '💥 SHIP DESTROYED';
     const updated = await Api.reportLevelResult(state.currentLevel.id, false, state.coinsThisRun);
     state.profile = normalizeProfile(updated);
-    loseSummary.textContent = `Your ship was destroyed on Level ${state.currentLevel.level_number}. Coins collected: ${state.coinsThisRun}.`;
+    loseSummary.textContent = `Your ship was destroyed on Level ${state.currentLevel.level_number}. Rupees collected: ${state.coinsThisRun}.`;
   }
   HUD.coinCount.textContent = state.profile.coins;
   showOverlay('lose');
 }
 
 // ==========================================================
-// SHOP
+// SHIPYARD (Blue/Purple upgrade cards, paid for with Rupees)
 // ==========================================================
+function abilityRow(charId, ability, label) {
+  const c = CHARACTERS[charId];
+  const lv = c[ability + 'Lv'];
+  const cost = upgradeCost(charId, ability);
+  const maxed = lv >= 10;
+  return `
+    <div class="ability-row">
+      <span class="a-label">${label}</span>
+      <div class="ability-bar"><div class="ability-bar-fill" style="width:${lv * 10}%"></div></div>
+      <span>${lv}/10</span>
+      <button data-char="${charId}" data-ability="${ability}" class="upgrade-btn" ${maxed ? 'disabled' : (state.profile.coins < cost ? 'disabled' : '')}>
+        ${maxed ? 'MAX' : `💎${cost}`}
+      </button>
+    </div>`;
+}
 function renderShop() {
+  document.getElementById('shipyard-rupees').textContent = state.profile.coins;
   const list = document.getElementById('shop-list');
   list.innerHTML = '';
-  state.ships.forEach(ship => {
-    const owned = state.profile.ownedShips.some(s => s.id === ship.id);
-    const isCurrent = state.profile.currentShipId === ship.id;
-    const lockedByLevel = state.profile.currentLevel < ship.unlock_level;
-
+  CHAR_IDS.forEach(charId => {
+    const c = CHARACTERS[charId];
+    const isEquipped = equippedChar === charId;
     const card = document.createElement('div');
-    card.className = 'ship-card' + (owned ? ' owned' : '') + (isCurrent ? ' current' : '');
-
-    const img = document.createElement('img');
-    img.className = 'ship-img';
-    img.src = ASSET_PATHS.ships[ship.id] || '';
-    img.alt = ship.name;
-    img.style.setProperty('--glow', ship.color);
-
-    const name = document.createElement('div');
-    name.className = 'ship-name';
-    name.style.color = ship.color;
-    name.textContent = ship.name;
-
-    const stats = document.createElement('div');
-    stats.className = 'ship-stats';
-    stats.innerHTML = `
-      <div><b>${ship.speed}</b>Speed</div>
-      <div><b>${ship.fire_rate}ms</b>Fire Rate</div>
-      <div><b>${ship.shield ?? 0}</b>Shield</div>`;
-
-    const price = document.createElement('div');
-    price.className = 'ship-price';
-    price.textContent = ship.cost > 0 ? `🪙 ${ship.cost}` : 'Free starter ship';
-    if (lockedByLevel) price.textContent += ` · unlocks at Level ${ship.unlock_level}`;
-
-    const btn = document.createElement('button');
-    if (isCurrent) { btn.textContent = 'EQUIPPED'; btn.disabled = true; }
-    else if (owned) { btn.textContent = 'EQUIP'; btn.onclick = () => equipShip(ship.id); }
-    else if (lockedByLevel) { btn.textContent = 'LOCKED'; btn.disabled = true; }
-    else { btn.textContent = `BUY 🪙${ship.cost}`; btn.disabled = state.profile.coins < ship.cost; btn.onclick = () => buyShip(ship.id); }
-
-    card.append(img, name, stats, price, btn);
+    card.className = 'upgrade-card' + (isEquipped ? ' equipped' : '');
+    card.innerHTML = `
+      <img src="${CHAR_META[charId].img}" alt="${CHAR_META[charId].name}" />
+      <div class="u-name" style="color:${CHAR_META[charId].glow}">${CHAR_META[charId].name}</div>
+      <div class="u-level">Ship Level ${c.level} / 5</div>
+      ${abilityRow(charId, 'attack', 'Attack')}
+      ${abilityRow(charId, 'health', 'Health')}
+      ${abilityRow(charId, 'speed', 'Speed')}
+      ${canBreakthrough(charId) ? `<button class="breakthrough-btn" data-breakthrough="${charId}">⚡ BREAKTHROUGH to Lv ${c.level + 1}</button>` : ''}
+      <button class="equip-btn" data-equip="${charId}" ${isEquipped ? 'disabled' : ''}>${isEquipped ? 'EQUIPPED' : 'EQUIP'}</button>
+    `;
     list.appendChild(card);
   });
-}
-async function buyShip(shipId) {
-  const result = await Api.buyShip(shipId);
-  if (result.error) { alert(result.error); return; }
-  state.profile = normalizeProfile(result);
-  HUD.coinCount.textContent = state.profile.coins;
-  renderShop();
-}
-async function equipShip(shipId) {
-  const result = await Api.selectShip(shipId);
-  state.profile = normalizeProfile(result);
-  renderShop();
+
+  list.querySelectorAll('.upgrade-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ok = upgradeAbility(btn.dataset.char, btn.dataset.ability);
+      if (ok) { Sound.upgrade(); renderShop(); }
+    });
+  });
+  list.querySelectorAll('[data-breakthrough]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ok = doBreakthrough(btn.dataset.breakthrough);
+      if (ok) { Sound.breakthrough(); renderShop(); }
+    });
+  });
+  list.querySelectorAll('[data-equip]').forEach(btn => {
+    btn.addEventListener('click', () => { setEquipped(btn.dataset.equip); renderShop(); });
+  });
 }
 
 // ==========================================================
@@ -906,23 +983,48 @@ function bindHold(el, onDown, onUp) {
   el.addEventListener('touchstart', down, { passive: false });
   ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach(ev => el.addEventListener(ev, up));
 }
-bindHold(document.getElementById('btn-left'), () => state.keys.left = true, () => state.keys.left = false);
-bindHold(document.getElementById('btn-right'), () => state.keys.right = true, () => state.keys.right = false);
-bindHold(document.getElementById('btn-up'), () => state.keys.up = true, () => state.keys.up = false);
-bindHold(document.getElementById('btn-down'), () => state.keys.down = true, () => state.keys.down = false);
+function p1() { return state.players[0]; }
+function p2() { return state.players[1]; }
 
+bindHold(document.getElementById('btn-left'), () => p1() && (p1().keys.left = true), () => p1() && (p1().keys.left = false));
+bindHold(document.getElementById('btn-right'), () => p1() && (p1().keys.right = true), () => p1() && (p1().keys.right = false));
+bindHold(document.getElementById('btn-up'), () => p1() && (p1().keys.up = true), () => p1() && (p1().keys.up = false));
+bindHold(document.getElementById('btn-down'), () => p1() && (p1().keys.down = true), () => p1() && (p1().keys.down = false));
+
+bindHold(document.getElementById('btn-left-p2'), () => p2() && (p2().keys.left = true), () => p2() && (p2().keys.left = false));
+bindHold(document.getElementById('btn-right-p2'), () => p2() && (p2().keys.right = true), () => p2() && (p2().keys.right = false));
+bindHold(document.getElementById('btn-up-p2'), () => p2() && (p2().keys.up = true), () => p2() && (p2().keys.up = false));
+bindHold(document.getElementById('btn-down-p2'), () => p2() && (p2().keys.down = true), () => p2() && (p2().keys.down = false));
+
+// Player 1 = Arrow keys, Player 2 = WASD. Space always pauses/resumes.
 window.addEventListener('keydown', e => {
-  if (e.key === 'ArrowLeft') state.keys.left = true;
-  if (e.key === 'ArrowRight') state.keys.right = true;
-  if (e.key === 'ArrowUp') state.keys.up = true;
-  if (e.key === 'ArrowDown') state.keys.down = true;
-  if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+  if (e.code === 'Space') { e.preventDefault(); togglePause(); return; }
+  if (p1()) {
+    if (e.key === 'ArrowLeft') p1().keys.left = true;
+    if (e.key === 'ArrowRight') p1().keys.right = true;
+    if (e.key === 'ArrowUp') p1().keys.up = true;
+    if (e.key === 'ArrowDown') p1().keys.down = true;
+  }
+  if (p2()) {
+    if (e.key === 'a' || e.key === 'A') p2().keys.left = true;
+    if (e.key === 'd' || e.key === 'D') p2().keys.right = true;
+    if (e.key === 'w' || e.key === 'W') p2().keys.up = true;
+    if (e.key === 's' || e.key === 'S') p2().keys.down = true;
+  }
 });
 window.addEventListener('keyup', e => {
-  if (e.key === 'ArrowLeft') state.keys.left = false;
-  if (e.key === 'ArrowRight') state.keys.right = false;
-  if (e.key === 'ArrowUp') state.keys.up = false;
-  if (e.key === 'ArrowDown') state.keys.down = false;
+  if (p1()) {
+    if (e.key === 'ArrowLeft') p1().keys.left = false;
+    if (e.key === 'ArrowRight') p1().keys.right = false;
+    if (e.key === 'ArrowUp') p1().keys.up = false;
+    if (e.key === 'ArrowDown') p1().keys.down = false;
+  }
+  if (p2()) {
+    if (e.key === 'a' || e.key === 'A') p2().keys.left = false;
+    if (e.key === 'd' || e.key === 'D') p2().keys.right = false;
+    if (e.key === 'w' || e.key === 'W') p2().keys.up = false;
+    if (e.key === 's' || e.key === 'S') p2().keys.down = false;
+  }
 });
 
 window.addEventListener('pointerdown', () => Sound.ensureCtx(), { once: true });
@@ -930,7 +1032,7 @@ document.querySelectorAll('button').forEach(btn => btn.addEventListener('click',
 
 // ---------- Home screen ----------
 document.getElementById('mode-levels').addEventListener('click', () => { renderLevelSelect(); showScreen('levelSelect'); });
-document.getElementById('mode-infinity').addEventListener('click', () => startInfinity());
+document.getElementById('mode-infinity').addEventListener('click', () => startInfinityWizard());
 document.getElementById('btn-level-select-back').addEventListener('click', () => showScreen('home'));
 document.getElementById('btn-settings-home').addEventListener('click', () => showOverlay('settings'));
 document.getElementById('btn-shop-home').addEventListener('click', () => { renderShop(); showOverlay('shop'); });
@@ -959,7 +1061,7 @@ document.getElementById('toggle-sound').addEventListener('change', e => Sound.se
 document.getElementById('volume-slider').addEventListener('input', e => Sound.setVolume(e.target.value / 100));
 document.getElementById('btn-close-settings').addEventListener('click', () => showOverlay(null));
 
-// ---------- Shop ----------
+// ---------- Shipyard ----------
 document.getElementById('btn-close-shop').addEventListener('click', () => showOverlay(null));
 
 // ---------- Boot ----------
