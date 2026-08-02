@@ -795,27 +795,66 @@ function onPlayerHit(player, now) {
 }
 
 // ==========================================================
-// DRAW
+// DRAW  (high-angle 45° perspective: objects are small & compressed
+// toward center near the top of the screen "far away", growing to full
+// size/spacing by the time they reach the player near the bottom "near").
+// Collision boxes stay in plain world coordinates (state entities' x/y/w/h)
+// - only rendering position/size is reprojected, and the projection is
+// defined so it matches world space exactly at the player's row, so
+// hitboxes and visuals line up right where it matters.
 // ==========================================================
+function horizonT(y) { return Math.max(0, Math.min(1, y / canvas.height)); }
+function perspScale(t) { return 0.5 + 0.5 * t; }       // 0.5x far -> 1.0x at player row
+function perspXFactor(t) { return 0.45 + 0.55 * t; }    // compressed toward center when far
+function project(obj) {
+  const cx = obj.x + obj.w / 2, cy = obj.y + obj.h / 2;
+  const t = horizonT(cy);
+  const scale = perspScale(t);
+  const xFactor = perspXFactor(t);
+  const centerX = canvas.width / 2;
+  const screenCX = centerX + (cx - centerX) * xFactor;
+  const w = obj.w * scale, h = obj.h * scale;
+  return { cx: screenCX, cy, w, h, scale };
+}
+
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawScrollingBackground();
+  drawHorizonFog();
 
-  ctx.font = '18px sans-serif';
-  state.coins.forEach(c => ctx.fillText('🪙', c.x, c.y + 16));
+  state.coins.forEach(c => {
+    const pr = project(c);
+    ctx.font = `${Math.round(18 * pr.scale)}px sans-serif`;
+    ctx.fillText('🪙', pr.cx - 9 * pr.scale, pr.cy + 7 * pr.scale);
+  });
 
-  ctx.font = '24px sans-serif';
-  state.powerups.forEach(p => ctx.fillText(POWER_TYPES[p.type].icon, p.x, p.y + 20));
+  state.powerups.forEach(p => {
+    const pr = project(p);
+    ctx.font = `${Math.round(24 * pr.scale)}px sans-serif`;
+    ctx.fillText(POWER_TYPES[p.type].icon, pr.cx - 12 * pr.scale, pr.cy + 9 * pr.scale);
+  });
 
   state.obstacles.forEach(o => drawRock(o));
   state.aliens.forEach(a => drawAlien(a));
 
-  ctx.fillStyle = '#00e5ff';
-  state.bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
-  ctx.fillStyle = '#ff1744';
-  state.alienBullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
+  state.bullets.forEach(b => drawProjectedRect(b, '#00e5ff'));
+  state.alienBullets.forEach(b => drawProjectedRect(b, '#ff1744'));
 
   state.players.forEach(p => { if (p.alive) drawShip(p); });
+}
+
+function drawProjectedRect(obj, color) {
+  const pr = project(obj);
+  ctx.fillStyle = color;
+  ctx.fillRect(pr.cx - pr.w / 2, pr.cy - pr.h / 2, pr.w, pr.h);
+}
+
+function drawHorizonFog() {
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.35);
+  grad.addColorStop(0, 'rgba(5,8,25,0.55)');
+  grad.addColorStop(1, 'rgba(5,8,25,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height * 0.35);
 }
 
 function drawScrollingBackground() {
@@ -829,34 +868,38 @@ function drawScrollingBackground() {
 }
 function drawRock(o) {
   const img = Images.rocks[o.imgIndex];
-  if (img) ctx.drawImage(img, o.x, o.y, o.w, o.w * (img.height / img.width));
+  if (!img) return;
+  const pr = project(o);
+  const h = pr.w * (img.height / img.width);
+  ctx.drawImage(img, pr.cx - pr.w / 2, pr.cy - h / 2, pr.w, h);
 }
 function drawAlien(a) {
   const img = Images.aliens[a.tier];
   if (!img) return;
-  const cx = a.x + a.w / 2, cy = a.y + a.h / 2;
+  const pr = project(a);
   ctx.save();
-  ctx.translate(cx, cy);
+  ctx.translate(pr.cx, pr.cy);
   ctx.rotate((ALIEN_ROTATION_DEG * Math.PI) / 180);
-  ctx.drawImage(img, -a.w / 2, -a.h / 2, a.w, a.h);
+  ctx.drawImage(img, -pr.w / 2, -pr.h / 2, pr.w, pr.h);
   ctx.restore();
 }
 function drawShip(p) {
   const now = performance.now();
   const invincible = isPowerActive(p, 'shield') || now < p.invincibleUntil;
-  const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
   const img = Images.ships[p.char];
+  const pr = project(p);
 
   ctx.save();
-  ctx.translate(cx, cy);
+  ctx.translate(pr.cx, pr.cy);
   if (invincible) { ctx.shadowColor = isPowerActive(p, 'shield') ? '#ffd600' : CHAR_META[p.char].glow; ctx.shadowBlur = 22; }
   if (img) {
     if (SHIP_ROTATION_DEG) ctx.rotate((SHIP_ROTATION_DEG * Math.PI) / 180);
-    const dispW = 42, dispH = 42 * (img.height / img.width);
+    const dispW = 42 * pr.scale, dispH = dispW * (img.height / img.width);
     ctx.drawImage(img, -dispW / 2, -dispH / 2, dispW, dispH);
   }
   ctx.restore();
 }
+
 
 // ==========================================================
 // MAIN LOOP + PAUSE

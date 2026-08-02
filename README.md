@@ -11,6 +11,18 @@ A single-player or local 2-player 2D space shooter with two modes:
 Crash into a rock/alien/bullet and you lose a heart (after your ship's
 armor is used up first, if its level has any). Run out of hearts = game over.
 
+## Camera / view angle
+The game now renders in a **high-angle (~45°) perspective** instead of a
+flat overhead view. Objects spawn small and compressed toward the center
+near the top of the screen ("far away") and grow to full size/spacing as
+they fall toward the player at the bottom ("near") — the classic pseudo-3D
+look of arcade rail shooters, without needing new 3D-rendered art. A subtle
+dark gradient near the top ("horizon fog") reinforces the sense of depth.
+Collision boxes stay in plain, unprojected coordinates, and the projection
+is defined so it matches 1:1 exactly at the player's row — so hitboxes and
+visuals line up perfectly right where it matters, and only distort for
+things still approaching from a distance.
+
 ## Ships: Blue Fighter & Purple Fighter
 There are two ships, not five. Each has its own independent progress:
 - **Ship Level** 1 → 5
