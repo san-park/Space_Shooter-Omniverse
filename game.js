@@ -703,7 +703,6 @@ function update(dt, now) {
 
   state.aliens.forEach(a => {
     a.y += a.vy * (dt / 16.67);
-    a.x += Math.sin((now + a.y) / 300) * 0.6;
     if (now - a.lastShot > a.shotInterval) {
       a.lastShot = now;
       state.alienBullets.push({ x: a.x + a.w / 2 - 2, y: a.y + a.h, w: 4, h: 12, vy: 5 });
@@ -795,26 +794,27 @@ function onPlayerHit(player, now) {
 }
 
 // ==========================================================
-// DRAW  (high-angle 45° perspective: objects are small & compressed
-// toward center near the top of the screen "far away", growing to full
-// size/spacing by the time they reach the player near the bottom "near").
-// Collision boxes stay in plain world coordinates (state entities' x/y/w/h)
-// - only rendering position/size is reprojected, and the projection is
-// defined so it matches world space exactly at the player's row, so
-// hitboxes and visuals line up right where it matters.
+// DRAW  (high-angle look via constant vertical squash + depth scale.
+// IMPORTANT: screen X always equals world X - no position-dependent
+// horizontal shifting. An earlier version compressed X toward center
+// based on each object's current height on screen, which meant anything
+// falling straight down (rocks, beams) visually drifted sideways every
+// frame purely because its Y changed - that was a bug, not an effect.
+// Now only two things vary with depth: overall SCALE (smaller = farther)
+// and nothing else horizontal ever moves an object that isn't actually
+// moving. The vertical SQUASH is a constant, position-independent factor
+// applied to every sprite's height, which is what actually reads as
+// "viewed from a high angle" without any risk of drift.
 // ==========================================================
+const SPRITE_SQUASH = 0.8; // constant flatten factor (not dependent on position - no drift)
 function horizonT(y) { return Math.max(0, Math.min(1, y / canvas.height)); }
-function perspScale(t) { return 0.5 + 0.5 * t; }       // 0.5x far -> 1.0x at player row
-function perspXFactor(t) { return 0.45 + 0.55 * t; }    // compressed toward center when far
+function perspScale(t) { return 0.55 + 0.45 * t; } // far (top) smaller -> near (player row) = 1.0
 function project(obj) {
   const cx = obj.x + obj.w / 2, cy = obj.y + obj.h / 2;
   const t = horizonT(cy);
   const scale = perspScale(t);
-  const xFactor = perspXFactor(t);
-  const centerX = canvas.width / 2;
-  const screenCX = centerX + (cx - centerX) * xFactor;
   const w = obj.w * scale, h = obj.h * scale;
-  return { cx: screenCX, cy, w, h, scale };
+  return { cx, cy, w, h, scale };
 }
 
 function draw() {
@@ -844,6 +844,7 @@ function draw() {
 }
 
 function drawProjectedRect(obj, color) {
+  // Bullets travel in a perfectly straight line (no squash/no x-shift) so beams never look tilted.
   const pr = project(obj);
   ctx.fillStyle = color;
   ctx.fillRect(pr.cx - pr.w / 2, pr.cy - pr.h / 2, pr.w, pr.h);
@@ -870,17 +871,18 @@ function drawRock(o) {
   const img = Images.rocks[o.imgIndex];
   if (!img) return;
   const pr = project(o);
-  const h = pr.w * (img.height / img.width);
+  const h = pr.w * (img.height / img.width) * SPRITE_SQUASH;
   ctx.drawImage(img, pr.cx - pr.w / 2, pr.cy - h / 2, pr.w, h);
 }
 function drawAlien(a) {
   const img = Images.aliens[a.tier];
   if (!img) return;
   const pr = project(a);
+  const h = pr.h * SPRITE_SQUASH;
   ctx.save();
   ctx.translate(pr.cx, pr.cy);
   ctx.rotate((ALIEN_ROTATION_DEG * Math.PI) / 180);
-  ctx.drawImage(img, -pr.w / 2, -pr.h / 2, pr.w, pr.h);
+  ctx.drawImage(img, -pr.w / 2, -h / 2, pr.w, h);
   ctx.restore();
 }
 function drawShip(p) {
@@ -894,11 +896,12 @@ function drawShip(p) {
   if (invincible) { ctx.shadowColor = isPowerActive(p, 'shield') ? '#ffd600' : CHAR_META[p.char].glow; ctx.shadowBlur = 22; }
   if (img) {
     if (SHIP_ROTATION_DEG) ctx.rotate((SHIP_ROTATION_DEG * Math.PI) / 180);
-    const dispW = 42 * pr.scale, dispH = dispW * (img.height / img.width);
+    const dispW = 42 * pr.scale, dispH = dispW * (img.height / img.width) * SPRITE_SQUASH;
     ctx.drawImage(img, -dispW / 2, -dispH / 2, dispW, dispH);
   }
   ctx.restore();
 }
+
 
 
 // ==========================================================

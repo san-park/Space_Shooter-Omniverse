@@ -12,16 +12,22 @@ Crash into a rock/alien/bullet and you lose a heart (after your ship's
 armor is used up first, if its level has any). Run out of hearts = game over.
 
 ## Camera / view angle
-The game now renders in a **high-angle (~45°) perspective** instead of a
-flat overhead view. Objects spawn small and compressed toward the center
-near the top of the screen ("far away") and grow to full size/spacing as
-they fall toward the player at the bottom ("near") — the classic pseudo-3D
-look of arcade rail shooters, without needing new 3D-rendered art. A subtle
-dark gradient near the top ("horizon fog") reinforces the sense of depth.
-Collision boxes stay in plain, unprojected coordinates, and the projection
-is defined so it matches 1:1 exactly at the player's row — so hitboxes and
-visuals line up perfectly right where it matters, and only distort for
-things still approaching from a distance.
+The game renders in a **high-angle perspective** instead of a flat overhead
+view, using two effects that are each *independent of an object's current
+position* (important — a position-dependent effect is what caused the
+earlier tilted-beam/drifting-rock bug, since anything whose on-screen
+height changes every frame would get its horizontal position nudged too,
+even when nothing was actually moving sideways):
+- **Depth scale** — objects are smaller near the top of the screen ("far")
+  and grow to full size by the time they reach the player's row ("near")
+- **Constant vertical squash** — every sprite is flattened by a fixed
+  ratio regardless of where it is, which reads as "viewed from an angle"
+  the same way a circle drawn as an ellipse does
+
+Screen X is always identical to world X — nothing ever shifts sideways
+that isn't actually moving sideways in the simulation, so beams travel in
+a perfectly straight line and rocks/aliens fall straight down. Collision
+boxes use the same plain world coordinates as before.
 
 ## Ships: Blue Fighter & Purple Fighter
 There are two ships, not five. Each has its own independent progress:
