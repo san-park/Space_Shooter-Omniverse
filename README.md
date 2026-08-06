@@ -11,6 +11,18 @@ A single-player or local 2-player 2D space shooter with two modes:
 Crash into a rock/alien/bullet and you lose a heart (after your ship's
 armor is used up first, if its level has any). Run out of hearts = game over.
 
+## Obstacles: crystal ruins (multi-hit, bigger, slower)
+Rocks were replaced with 6 crystal-obstacle sprites (blue/purple elongated
+ruin blocks, blue/purple obelisks, a blue crystal spire, an icy spire).
+Each type now has its own **health** — the two ruin blocks take 3 shots to
+destroy, the spires/obelisks take 2. A hit that doesn't destroy an obstacle
+gives it a brief dim "damaged" flash and a lighter impact sound; only a
+kill triggers the full explosion sound + Rupees. Obstacles are also
+larger overall and fall noticeably slower than before, and the player ship
+itself renders bigger too. Background scroll speed now rises only very
+gently as you progress (tied to score in Infinity / distance in Levels)
+instead of tracking the sharper difficulty ramp.
+
 ## Camera / view angle
 The game renders in a **high-angle perspective** instead of a flat overhead
 view, using two effects that are each *independent of an object's current

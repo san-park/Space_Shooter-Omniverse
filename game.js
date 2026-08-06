@@ -200,6 +200,7 @@ const Sound = {
     this.tone(a, b, 0.35, 'sawtooth', 0.1);
   },
   hit() { this.tone(180, 60, 0.35, 'square', 0.18); },
+  rockHit() { this.tone(300, 150, 0.08, 'square', 0.09); },
   click() { this.tone(440, 440, 0.05, 'square', 0.05); },
   upgrade() { this.tone(400, 1000, 0.2, 'triangle', 0.12); },
   breakthrough() { [400, 600, 900, 1300].forEach((f, i) => setTimeout(() => this.tone(f, f, 0.2, 'triangle', 0.14), i * 110)); },
@@ -248,7 +249,17 @@ const ASSET_PATHS = {
     'assets/aliens/catn.png',
     'assets/aliens/cruiser.png',
   ],
-  rocks: ['assets/rocks/rock1.png', 'assets/rocks/rock2.png', 'assets/rocks/rock3.png'],
+  // Each obstacle type has its own base health (hits to destroy) and size multiplier.
+  // The elongated "block" ruins take more hits and render larger; the crystal
+  // spires/obelisks are the standard obstacle.
+  rocks: [
+    { src: 'assets/rocks/blue_block.png', health: 3, sizeMul: 1.35 },
+    { src: 'assets/rocks/purple_block.png', health: 3, sizeMul: 1.35 },
+    { src: 'assets/rocks/blue_obelisk.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/purple_obelisk.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/blue_mountain.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/icy_mountain.png', health: 2, sizeMul: 1.0 },
+  ],
 };
 const SHIP_ROTATION_DEG = 0; // the blue/purple ship art is already drawn pointing straight up
 const ALIEN_ROTATION_DEG = 160;
@@ -267,7 +278,7 @@ async function preloadAssets() {
   const shipEntries = await Promise.all(Object.entries(ASSET_PATHS.ships).map(async ([id, src]) => [id, await loadImage(src)]));
   shipEntries.forEach(([id, img]) => { Images.ships[id] = img; });
   Images.aliens = await Promise.all(ASSET_PATHS.aliens.map(loadImage));
-  Images.rocks = await Promise.all(ASSET_PATHS.rocks.map(loadImage));
+  Images.rocks = await Promise.all(ASSET_PATHS.rocks.map(r => loadImage(r.src)));
 }
 function alienTierForLevel(levelNumber) {
   return Math.max(0, Math.min(ASSET_PATHS.aliens.length - 1, levelNumber - 1));
@@ -493,7 +504,7 @@ function buildPlayers(chars) {
     return {
       char, index: i,
       x: spacing * (i + 1) - 17, y: canvas.height - 130,
-      w: 34, h: 50,
+      w: 48, h: 70,
       hearts: stats.maxHearts, maxHearts: stats.maxHearts, armor: stats.armor,
       alive: true, invincibleUntil: 0, lastShotAt: 0,
       activePowers: {},
@@ -618,11 +629,17 @@ function maybeSpawn(dt, now) {
 
   const roll = Math.random();
   if (roll < 0.42) {
-    const size = 26 + Math.random() * 34;
+    const imgIndex = Math.floor(Math.random() * ASSET_PATHS.rocks.length);
+    const rockType = ASSET_PATHS.rocks[imgIndex];
+    const img = Images.rocks[imgIndex];
+    const baseSize = (40 + Math.random() * 42) * rockType.sizeMul;
+    const aspect = img ? img.height / img.width : 1;
+    const w = baseSize, h = baseSize * aspect;
     state.obstacles.push({
-      x: Math.random() * (canvas.width - size), y: -size,
-      w: size, h: size, vy: (2 + Math.random() * 2 + baseDensity * 2) * mult,
-      imgIndex: Math.floor(Math.random() * ASSET_PATHS.rocks.length)
+      x: Math.random() * (canvas.width - w), y: -h,
+      w, h,
+      vy: (1.1 + Math.random() * 1.1 + baseDensity * 1.1) * mult, // slower fall than before
+      imgIndex, hp: rockType.health, maxHp: rockType.health
     });
   } else if (roll < 0.68 && state.aliens.length < (state.currentLevel.alien_count || 6) * mult) {
     const baseTier = state.mode === 'levels'
@@ -682,7 +699,12 @@ function update(dt, now) {
   } else {
     state.score += (0.6 + leadShip.speed * 0.05) * (dt / 16.67) * difficultyMultiplier();
   }
-  state.bgOffset += (1.2 + leadShip.speed * 0.25) * difficultyMultiplier() * (dt / 16.67);
+  // Background scroll speed: a gentle, steady base pace that only very slightly
+  // quickens as you progress (score in Infinity, distance in Levels) - intentionally
+  // decoupled from the difficulty multiplier so it never ramps up sharply.
+  const progressRef = state.mode === 'infinity' ? state.score : state.distance;
+  const bgSpeedFactor = 1 + Math.min(0.5, progressRef / 6000);
+  state.bgOffset += 1.3 * bgSpeedFactor * (dt / 16.67);
 
   maybeSpawn(dt, now);
   moveEntities(state.obstacles, dt);
@@ -712,7 +734,14 @@ function update(dt, now) {
 
   state.bullets.forEach(b => {
     state.aliens.forEach(a => { if (!b.dead && !a.dead && rectsOverlap(b, a)) { b.dead = true; a.dead = true; addScoreOrCoins(5); Sound.explosion(); } });
-    state.obstacles.forEach(o => { if (!b.dead && !o.dead && rectsOverlap(b, o)) { b.dead = true; o.dead = true; Sound.explosion(); } });
+    state.obstacles.forEach(o => {
+      if (!b.dead && !o.dead && rectsOverlap(b, o)) {
+        b.dead = true;
+        o.hp -= 1;
+        if (o.hp <= 0) { o.dead = true; addScoreOrCoins(3); Sound.explosion(); }
+        else Sound.rockHit();
+      }
+    });
   });
   state.bullets = state.bullets.filter(b => !b.dead);
   state.aliens = state.aliens.filter(a => !a.dead);
@@ -872,7 +901,10 @@ function drawRock(o) {
   if (!img) return;
   const pr = project(o);
   const h = pr.w * (img.height / img.width) * SPRITE_SQUASH;
+  const damaged = o.hp < o.maxHp;
+  if (damaged) { ctx.save(); ctx.globalAlpha = 0.55 + 0.45 * (o.hp / o.maxHp); }
   ctx.drawImage(img, pr.cx - pr.w / 2, pr.cy - h / 2, pr.w, h);
+  if (damaged) ctx.restore();
 }
 function drawAlien(a) {
   const img = Images.aliens[a.tier];
@@ -896,7 +928,7 @@ function drawShip(p) {
   if (invincible) { ctx.shadowColor = isPowerActive(p, 'shield') ? '#ffd600' : CHAR_META[p.char].glow; ctx.shadowBlur = 22; }
   if (img) {
     if (SHIP_ROTATION_DEG) ctx.rotate((SHIP_ROTATION_DEG * Math.PI) / 180);
-    const dispW = 42 * pr.scale, dispH = dispW * (img.height / img.width) * SPRITE_SQUASH;
+    const dispW = p.w * pr.scale, dispH = dispW * (img.height / img.width) * SPRITE_SQUASH;
     ctx.drawImage(img, -dispW / 2, -dispH / 2, dispW, dispH);
   }
   ctx.restore();
