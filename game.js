@@ -430,14 +430,17 @@ function startInfinityWizard() {
 function wizCard(id, icon, label) {
   return `<div class="wizard-card" id="${id}"><div class="w-icon">${icon}</div><span>${label}</span></div>`;
 }
+function wizImgCard(id, imgSrc, label) {
+  return `<button class="wizard-card wizard-card-art" id="${id}"><img src="${imgSrc}" alt="${label}" /></button>`;
+}
 function renderWizardDifficulty() {
   const el = document.getElementById('infinity-setup-content');
   el.innerHTML = `
     <div class="wizard-title">SELECT DIFFICULTY</div>
     <div class="wizard-options">
-      ${wizCard('wiz-diff-easy', '😌', 'EASY')}
-      ${wizCard('wiz-diff-normal', '⚔️', 'NORMAL')}
-      ${wizCard('wiz-diff-hard', '💀', 'HARD')}
+      ${wizImgCard('wiz-diff-easy', 'assets/ui/card_easy.png', 'Easy')}
+      ${wizImgCard('wiz-diff-normal', 'assets/ui/card_normal.png', 'Normal')}
+      ${wizImgCard('wiz-diff-hard', 'assets/ui/card_hard.png', 'Hard')}
     </div>`;
   ['easy', 'normal', 'hard'].forEach(d => {
     document.getElementById('wiz-diff-' + d).onclick = () => { Sound.click(); state.difficulty = d; renderWizardPlayers(); };
@@ -448,8 +451,8 @@ function renderWizardPlayers() {
   el.innerHTML = `
     <div class="wizard-title">PLAYERS</div>
     <div class="wizard-options">
-      ${wizCard('wiz-p1', '🧑\u200d🚀', '1 PLAYER')}
-      ${wizCard('wiz-p2', '👥', '2 PLAYERS')}
+      ${wizImgCard('wiz-p1', 'assets/ui/card_solo.png', '1 Player')}
+      ${wizImgCard('wiz-p2', 'assets/ui/card_two.png', '2 Players')}
     </div>
     <button class="wizard-back" id="wiz-back-1">◀ BACK</button>`;
   document.getElementById('wiz-p1').onclick = () => { Sound.click(); state.playerCount = 1; renderWizardShipSelect(); };

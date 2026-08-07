@@ -55,27 +55,28 @@ html, body {
 
 .mode-select {
   display: flex;
-  gap: 22px;
+  gap: 16px;
   justify-content: center;
   align-items: center;
+  flex-wrap: wrap;
 }
 .mode-card {
-  width: 150px; height: 210px;
-  border-radius: 18px;
-  border: 2px solid rgba(255,255,255,0.18);
-  background: linear-gradient(160deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 10px;
+  border: none;
+  background: none;
+  padding: 0;
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  border-radius: 18px;
+  transition: transform 0.15s ease, filter 0.15s ease;
+  filter: drop-shadow(0 6px 18px rgba(0,0,0,0.5));
+}
+.mode-card img {
+  display: block;
+  width: 150px;
+  height: auto;
+  border-radius: 14px;
 }
 .mode-card:active { transform: scale(0.96); }
-#mode-levels { border-color: #00e5ff; box-shadow: 0 0 24px rgba(0,229,255,0.25); }
-#mode-infinity { border-color: #ff9100; box-shadow: 0 0 24px rgba(255,145,0,0.25); }
-.mode-img { font-size: 46px; }
-.mode-card h2 { font-size: 16px; letter-spacing: 2px; }
-.mode-card p { font-size: 11px; opacity: 0.75; line-height: 1.4; }
+.mode-card:hover { filter: drop-shadow(0 6px 24px rgba(255,255,255,0.25)); }
 
 /* ---------- LEVEL SELECT ---------- */
 #level-select {
@@ -241,16 +242,16 @@ html, body {
 .overlay button:active { transform: scale(0.96); }
 
 /* pause row */
-.pause-row { display: flex; gap: 18px; align-items: center; }
-.round-btn {
-  width: 56px; height: 56px; min-width: 0 !important;
-  border-radius: 50%; font-size: 20px;
-  background: rgba(255,255,255,0.12) !important; color: #e6f1ff !important;
+.pause-row { display: flex; gap: 14px; align-items: center; }
+.art-btn {
+  border: none; background: none; padding: 0; min-width: 0 !important;
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
 }
-.round-btn.big {
-  width: 76px; height: 76px; font-size: 28px;
-  background: linear-gradient(180deg,#00e5ff,#0091ea) !important; color: #001018 !important;
-}
+.art-btn img { display: block; width: 96px; height: auto; }
+.art-btn.big img { width: 118px; }
+.art-btn:active { transform: scale(0.94); }
+.art-btn:hover { filter: drop-shadow(0 0 10px rgba(255,255,255,0.35)); }
 .hint { font-size: 12px; opacity: 0.6; }
 
 /* settings */
@@ -352,6 +353,13 @@ html, body {
 .wizard-card span { font-size: 12px; font-weight: bold; letter-spacing: 1px; }
 .wizard-card.ship-card-pick { width: 130px; }
 .wizard-card.ship-card-pick img { width: 60px; height: auto; }
+.wizard-card-art {
+  width: auto; height: auto; min-height: 0;
+  border: none; background: none; padding: 0;
+  border-radius: 12px;
+}
+.wizard-card-art img { display: block; width: 110px; height: auto; border-radius: 10px; }
+.wizard-card-art:hover { filter: drop-shadow(0 0 10px rgba(255,255,255,0.3)); }
 .wizard-back { margin-top: 4px; background: rgba(255,255,255,0.12) !important; }
 .wizard-summary { font-size: 13px; opacity: 0.85; text-align: center; }
 

@@ -20,16 +20,12 @@
       <p class="subtitle">Dodge rocks &amp; aliens, collect coins, survive!</p>
 
       <div class="mode-select">
-        <div class="mode-card" id="mode-levels">
-          <div class="mode-img">🗺️</div>
-          <h2>LEVELS</h2>
-          <p>Complete missions,<br/>earn Rupees</p>
-        </div>
-        <div class="mode-card" id="mode-infinity">
-          <div class="mode-img">♾️</div>
-          <h2>INFINITY</h2>
-          <p>Choose difficulty,<br/>1 or 2 players</p>
-        </div>
+        <button class="mode-card" id="mode-levels">
+          <img src="assets/ui/card_levels.png" alt="Levels: Complete levels, defeat bosses" />
+        </button>
+        <button class="mode-card" id="mode-infinity">
+          <img src="assets/ui/card_infinity.png" alt="Infinity: Survive endless waves" />
+        </button>
       </div>
     </div>
 
@@ -112,9 +108,9 @@
     <div id="overlay-pause" class="overlay hidden">
       <h1>⏸ PAUSED</h1>
       <div class="pause-row">
-        <button id="btn-pause-home" class="round-btn">🏠</button>
-        <button id="btn-pause-resume" class="round-btn big">▶</button>
-        <button id="btn-pause-restart" class="round-btn">🔁</button>
+        <button id="btn-pause-home" class="art-btn"><img src="assets/ui/btn_home.png" alt="Home" /></button>
+        <button id="btn-pause-resume" class="art-btn big"><img src="assets/ui/btn_resume.png" alt="Resume" /></button>
+        <button id="btn-pause-restart" class="art-btn"><img src="assets/ui/btn_restart.png" alt="Restart" /></button>
       </div>
       <p class="hint">Press SPACE to resume</p>
     </div>
