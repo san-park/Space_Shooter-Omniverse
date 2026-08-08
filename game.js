@@ -253,12 +253,12 @@ const ASSET_PATHS = {
   // The elongated "block" ruins take more hits and render larger; the crystal
   // spires/obelisks are the standard obstacle.
   rocks: [
-    { src: 'assets/rocks/blue_block.png', health: 3, sizeMul: 1.35 },
-    { src: 'assets/rocks/purple_block.png', health: 3, sizeMul: 1.35 },
-    { src: 'assets/rocks/blue_obelisk.png', health: 2, sizeMul: 1.0 },
-    { src: 'assets/rocks/purple_obelisk.png', health: 2, sizeMul: 1.0 },
-    { src: 'assets/rocks/blue_mountain.png', health: 2, sizeMul: 1.0 },
-    { src: 'assets/rocks/icy_mountain.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/blue_block.png', health: 3, sizeMul: 1.35, glow: '100,180,255' },
+    { src: 'assets/rocks/purple_block.png', health: 3, sizeMul: 1.35, glow: '190,140,255' },
+    { src: 'assets/rocks/blue_obelisk.png', health: 2, sizeMul: 1.0, glow: '100,180,255' },
+    { src: 'assets/rocks/purple_obelisk.png', health: 2, sizeMul: 1.0, glow: '190,140,255' },
+    { src: 'assets/rocks/blue_mountain.png', health: 2, sizeMul: 1.0, glow: '100,180,255' },
+    { src: 'assets/rocks/icy_mountain.png', health: 2, sizeMul: 1.0, glow: '200,225,255' },
   ],
 };
 const SHIP_ROTATION_DEG = 0; // the blue/purple ship art is already drawn pointing straight up
@@ -364,7 +364,7 @@ const state = {
   coinsThisRun: 0,
   players: [],
   bullets: [], alienBullets: [],
-  obstacles: [], aliens: [], coins: [], powerups: [],
+  obstacles: [], aliens: [], coins: [], powerups: [], shards: [],
   lastSpawn: 0, bgOffset: 0,
 };
 
@@ -520,7 +520,7 @@ function resetRunState() {
   state.score = 0;
   state.coinsThisRun = 0;
   state.obstacles = []; state.aliens = []; state.bullets = [];
-  state.alienBullets = []; state.coins = []; state.powerups = [];
+  state.alienBullets = []; state.coins = []; state.powerups = []; state.shards = [];
   state.lastSpawn = 0;
   state.paused = false;
   state.bgOffset = 0;
@@ -665,6 +665,118 @@ function maybeSpawn(dt, now) {
 }
 
 // ==========================================================
+// OBSTACLE SHATTER (Voronoi/Delaunay fracture on the sprite's own pixels,
+// adapted from a standalone destruction-fx prototype)
+// ==========================================================
+const shatterMaskCache = new Map();
+function getShatterMask(img) {
+  if (shatterMaskCache.has(img)) return shatterMaskCache.get(img);
+  const off = document.createElement('canvas');
+  off.width = img.width; off.height = img.height;
+  const octx = off.getContext('2d');
+  octx.drawImage(img, 0, 0);
+  const data = octx.getImageData(0, 0, img.width, img.height).data;
+  const mask = { data, w: img.width, h: img.height };
+  shatterMaskCache.set(img, mask);
+  return mask;
+}
+function shatterRock(o) {
+  const img = Images.rocks[o.imgIndex];
+  if (!img || typeof d3 === 'undefined') return;
+  const rockType = ASSET_PATHS.rocks[o.imgIndex];
+  const pr = project(o);
+  const dispH = pr.w * (img.height / img.width) * SPRITE_SQUASH;
+  const scale = pr.w / img.width;
+  const mask = getShatterMask(img);
+  const alphaAt = (x, y) => {
+    x = Math.max(0, Math.min(mask.w - 1, x | 0));
+    y = Math.max(0, Math.min(mask.h - 1, y | 0));
+    return mask.data[(y * mask.w + x) * 4 + 3];
+  };
+  const area = mask.w * mask.h;
+  const numPoints = Math.min(40, Math.max(8, Math.round(area / 2800)));
+  const points = [];
+  let attempts = 0;
+  while (points.length < numPoints && attempts < numPoints * 60) {
+    attempts++;
+    const x = Math.random() * mask.w, y = Math.random() * mask.h;
+    if (alphaAt(x, y) > 25) points.push([x, y]);
+  }
+  if (points.length < 4) return; // too sparse to fracture meaningfully
+  const delaunay = d3.Delaunay.from(points);
+  const voronoi = delaunay.voronoi([0, 0, mask.w, mask.h]);
+  const cx = mask.w / 2, cy = dispH > 0 ? mask.h / 2 : mask.h / 2;
+
+  for (let i = 0; i < points.length; i++) {
+    const polygon = voronoi.cellPolygon(i);
+    if (!polygon || polygon.length < 3) continue;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    polygon.forEach(([px, py]) => { minX = Math.min(minX, px); minY = Math.min(minY, py); maxX = Math.max(maxX, px); maxY = Math.max(maxY, py); });
+    const pad = 1;
+    const srcX = Math.max(0, Math.floor(minX) - pad), srcY = Math.max(0, Math.floor(minY) - pad);
+    const srcW = Math.min(mask.w - srcX, Math.ceil(maxX - minX) + pad * 2);
+    const srcH = Math.min(mask.h - srcY, Math.ceil(maxY - minY) + pad * 2);
+    if (srcW <= 0 || srcH <= 0) continue;
+    const destW = Math.max(1, Math.round(srcW * scale)), destH = Math.max(1, Math.round(srcH * scale));
+
+    const shard = document.createElement('canvas');
+    shard.width = destW; shard.height = destH;
+    const sctx = shard.getContext('2d');
+    sctx.save();
+    sctx.beginPath();
+    polygon.forEach(([px, py], idx) => {
+      const lx = (px - srcX) * scale, ly = (py - srcY) * scale;
+      if (idx === 0) sctx.moveTo(lx, ly); else sctx.lineTo(lx, ly);
+    });
+    sctx.closePath();
+    sctx.clip();
+    sctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, destW, destH);
+    sctx.restore();
+
+    const centroid = polygon.reduce((a, [x, y]) => [a[0] + x, a[1] + y], [0, 0]).map(v => v / polygon.length);
+    const worldX = (pr.cx - pr.w / 2) + centroid[0] * scale;
+    const worldY = (pr.cy - dispH / 2) + centroid[1] * scale;
+    const localCX = (centroid[0] - srcX) * scale, localCY = (centroid[1] - srcY) * scale;
+    const fromCX = centroid[0] - cx, fromCY = centroid[1] - cy;
+    const dist = Math.max(Math.hypot(fromCX, fromCY), 1);
+    const speed = 2 + Math.random() * 4 + dist * 0.03;
+
+    state.shards.push({
+      canvas: shard, cw: destW, ch: destH,
+      cx: localCX, cy: localCY,
+      x: worldX, y: worldY,
+      vx: (fromCX / dist) * speed, vy: (fromCY / dist) * speed - 1,
+      rot: (Math.random() - 0.5) * 0.5, vrot: (Math.random() - 0.5) * 0.15,
+      alpha: 1, life: 0, fadeStart: 20 + Math.random() * 15,
+      glow: rockType.glow,
+    });
+  }
+  Sound.explosion();
+}
+function updateShards(dt) {
+  state.shards.forEach(p => {
+    p.life++;
+    p.x += p.vx * (dt / 16.67);
+    p.y += p.vy * (dt / 16.67);
+    p.vy += 0.02 * (dt / 16.67); // gentle drift, not true gravity - stays arcade-y
+    p.rot += p.vrot * (dt / 16.67);
+    if (p.life > p.fadeStart) { p.alpha -= 0.03; }
+  });
+  state.shards = state.shards.filter(p => p.alpha > 0);
+}
+function drawShards() {
+  state.shards.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = Math.max(p.alpha, 0);
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    if (p.glow) { ctx.shadowColor = `rgba(${p.glow},0.85)`; ctx.shadowBlur = 10; }
+    ctx.drawImage(p.canvas, -p.cx, -p.cy);
+    ctx.restore();
+  });
+}
+
+// ==========================================================
 // UPDATE
 // ==========================================================
 function update(dt, now) {
@@ -710,6 +822,7 @@ function update(dt, now) {
   state.bgOffset += 1.3 * bgSpeedFactor * (dt / 16.67);
 
   maybeSpawn(dt, now);
+  updateShards(dt);
   moveEntities(state.obstacles, dt);
   moveEntities(state.coins, dt);
   moveEntities(state.powerups, dt);
@@ -741,7 +854,7 @@ function update(dt, now) {
       if (!b.dead && !o.dead && rectsOverlap(b, o)) {
         b.dead = true;
         o.hp -= 1;
-        if (o.hp <= 0) { o.dead = true; addScoreOrCoins(3); Sound.explosion(); }
+        if (o.hp <= 0) { o.dead = true; addScoreOrCoins(3); shatterRock(o); }
         else Sound.rockHit();
       }
     });
@@ -868,6 +981,7 @@ function draw() {
 
   state.obstacles.forEach(o => drawRock(o));
   state.aliens.forEach(a => drawAlien(a));
+  drawShards();
 
   state.bullets.forEach(b => drawProjectedRect(b, '#00e5ff'));
   state.alienBullets.forEach(b => drawProjectedRect(b, '#ff1744'));
