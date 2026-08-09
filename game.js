@@ -242,13 +242,8 @@ const Sound = {
 const ASSET_PATHS = {
   bg: 'assets/bg-space.jpg',
   ships: { blue: CHAR_META.blue.img, purple: CHAR_META.purple.img },
-  aliens: [
-    'assets/aliens/saucer_small.png',
-    'assets/aliens/saucer_medium.png',
-    'assets/aliens/frigate.png',
-    'assets/aliens/catn.png',
-    'assets/aliens/cruiser.png',
-  ],
+  // Aliens now reuse the Purple Fighter art (flipped to face the player)
+  // instead of the old 5-tier alien sprite set.
   // Each obstacle type has its own base health (hits to destroy) and size multiplier.
   // The elongated "block" ruins take more hits and render larger; the crystal
   // spires/obelisks are the standard obstacle.
@@ -262,7 +257,7 @@ const ASSET_PATHS = {
   ],
 };
 const SHIP_ROTATION_DEG = 0; // the blue/purple ship art is already drawn pointing straight up
-const ALIEN_ROTATION_DEG = 160;
+const ALIEN_ROTATION_DEG = 180;
 
 const Images = { bg: null, ships: {}, aliens: [], rocks: [] };
 function loadImage(src) {
@@ -277,15 +272,11 @@ async function preloadAssets() {
   Images.bg = await loadImage(ASSET_PATHS.bg);
   const shipEntries = await Promise.all(Object.entries(ASSET_PATHS.ships).map(async ([id, src]) => [id, await loadImage(src)]));
   shipEntries.forEach(([id, img]) => { Images.ships[id] = img; });
-  Images.aliens = await Promise.all(ASSET_PATHS.aliens.map(loadImage));
+  Images.aliens = [Images.ships.purple]; // single shared sprite - no extra network request
   Images.rocks = await Promise.all(ASSET_PATHS.rocks.map(r => loadImage(r.src)));
 }
-function alienTierForLevel(levelNumber) {
-  return Math.max(0, Math.min(ASSET_PATHS.aliens.length - 1, levelNumber - 1));
-}
-function alienTierForScore(score) {
-  return Math.max(0, Math.min(ASSET_PATHS.aliens.length - 1, Math.floor(score / 400)));
-}
+function alienTierForLevel(levelNumber) { return 0; }
+function alienTierForScore(score) { return 0; }
 
 // ==========================================================
 // DOM REFERENCES
@@ -455,7 +446,7 @@ function renderWizardPlayers() {
       ${wizImgCard('wiz-p2', 'assets/ui/card_two.png', '2 Players')}
     </div>
     <button class="wizard-back" id="wiz-back-1">◀ BACK</button>`;
-  document.getElementById('wiz-p1').onclick = () => { Sound.click(); state.playerCount = 1; renderWizardShipSelect(); };
+  document.getElementById('wiz-p1').onclick = () => { Sound.click(); state.playerCount = 1; state.selectedChars = [equippedChar]; renderWizardConfirm(); };
   document.getElementById('wiz-p2').onclick = () => { Sound.click(); state.playerCount = 2; state.selectedChars = ['blue', 'purple']; renderWizardConfirm(); };
   document.getElementById('wiz-back-1').onclick = () => { Sound.click(); renderWizardDifficulty(); };
 }
@@ -492,7 +483,7 @@ function renderWizardConfirm() {
   document.getElementById('wiz-start').onclick = () => { Sound.click(); showOverlay(null); startInfinity(); };
   document.getElementById('wiz-back-3').onclick = () => {
     Sound.click();
-    if (state.playerCount === 2) renderWizardPlayers(); else renderWizardShipSelect();
+    renderWizardPlayers();
   };
 }
 
@@ -507,7 +498,7 @@ function buildPlayers(chars) {
     return {
       char, index: i,
       x: spacing * (i + 1) - 17, y: canvas.height - 130,
-      w: 48, h: 70,
+      w: 66, h: 96,
       hearts: stats.maxHearts, maxHearts: stats.maxHearts, armor: stats.armor,
       alive: true, invincibleUntil: 0, lastShotAt: 0,
       activePowers: {},
@@ -527,6 +518,7 @@ function resetRunState() {
 
   resizeCanvas();
   state.players = buildPlayers(state.selectedChars);
+  maintainObstacles();
 
   HUD.hullBarP2.classList.toggle('hidden', state.selectedChars.length < 2);
   HUD.dpadP2.classList.toggle('hidden', state.selectedChars.length < 2);
@@ -626,25 +618,14 @@ function difficultyMultiplier() {
 function maybeSpawn(dt, now) {
   const mult = difficultyMultiplier();
   const baseDensity = state.currentLevel.obstacle_density * mult;
+  maintainObstacles();
+
   const spawnInterval = Math.max(160, (900 - baseDensity * 900) / mult);
   if (now - state.lastSpawn < spawnInterval) return;
   state.lastSpawn = now;
 
   const roll = Math.random();
-  if (roll < 0.42) {
-    const imgIndex = Math.floor(Math.random() * ASSET_PATHS.rocks.length);
-    const rockType = ASSET_PATHS.rocks[imgIndex];
-    const img = Images.rocks[imgIndex];
-    const baseSize = (40 + Math.random() * 42) * rockType.sizeMul;
-    const aspect = img ? img.height / img.width : 1;
-    const w = baseSize, h = baseSize * aspect;
-    state.obstacles.push({
-      x: Math.random() * (canvas.width - w), y: -h,
-      w, h,
-      vy: (1.1 + Math.random() * 1.1 + baseDensity * 1.1) * mult, // slower fall than before
-      imgIndex, hp: rockType.health, maxHp: rockType.health
-    });
-  } else if (roll < 0.68 && state.aliens.length < (state.currentLevel.alien_count || 6) * mult) {
+  if (roll < 0.35 && state.aliens.length < (state.currentLevel.alien_count || 6) * mult) {
     const baseTier = state.mode === 'levels'
       ? alienTierForLevel(state.currentLevel.level_number || 1)
       : alienTierForScore(state.score);
@@ -654,7 +635,7 @@ function maybeSpawn(dt, now) {
       w: 38, h: 38, vy: (1.4 + Math.random() * 1.2) * mult,
       lastShot: now, shotInterval: Math.max(500, 1400 - baseDensity * 500), tier
     });
-  } else if (roll < 0.85) {
+  } else if (roll < 0.75) {
     state.coins.push({ x: Math.random() * (canvas.width - 20), y: -20, w: 20, h: 20, vy: 2.5 * mult });
   } else {
     const types = Object.keys(POWER_TYPES);
@@ -662,6 +643,36 @@ function maybeSpawn(dt, now) {
     const size = 26;
     state.powerups.push({ x: Math.random() * (canvas.width - size), y: -size, w: size, h: size, vy: 2.3 * mult, type });
   }
+}
+
+// Obstacles are a maintained static field: fixed position and fixed size per
+// type once spawned - they never move or fall, they just sit in space until
+// shot down, at which point a replacement appears elsewhere to keep the
+// field populated.
+function targetObstacleCount() {
+  const mult = difficultyMultiplier();
+  const baseDensity = state.currentLevel.obstacle_density * mult;
+  return Math.max(3, Math.min(10, Math.round(4 + baseDensity * 6)));
+}
+function spawnStaticObstacle() {
+  const imgIndex = Math.floor(Math.random() * ASSET_PATHS.rocks.length);
+  const rockType = ASSET_PATHS.rocks[imgIndex];
+  const img = Images.rocks[imgIndex];
+  const aspect = img ? img.height / img.width : 1;
+  const w = 64 * rockType.sizeMul; // fixed size per type - no per-instance randomness
+  const h = w * aspect;
+  let x, y, tries = 0;
+  const safeTop = 70, safeBottom = 150; // keep clear of the HUD and the D-pad controls
+  do {
+    x = Math.random() * Math.max(1, canvas.width - w);
+    y = safeTop + Math.random() * Math.max(1, canvas.height - h - safeTop - safeBottom);
+    tries++;
+  } while (tries < 12 && state.obstacles.some(o => rectsOverlap({ x: x - 24, y: y - 24, w: w + 48, h: h + 48 }, o)));
+  state.obstacles.push({ x, y, w, h, imgIndex, hp: rockType.health, maxHp: rockType.health });
+}
+function maintainObstacles() {
+  const target = targetObstacleCount();
+  while (state.obstacles.length < target) spawnStaticObstacle();
 }
 
 // ==========================================================
@@ -823,7 +834,6 @@ function update(dt, now) {
 
   maybeSpawn(dt, now);
   updateShards(dt);
-  moveEntities(state.obstacles, dt);
   moveEntities(state.coins, dt);
   moveEntities(state.powerups, dt);
   moveEntities(state.bullets, dt, true);
