@@ -10,12 +10,16 @@ const USERNAME = localStorage.getItem('gr_username') || (() => {
 })();
 
 const FALLBACK_LEVELS = [
-  { id: 1, level_number: 1, name: 'Asteroid Belt', distance: 3000, alien_count: 5, obstacle_density: 0.20, reward_coins: 150 },
-  { id: 2, level_number: 2, name: 'Alien Outpost', distance: 4000, alien_count: 8, obstacle_density: 0.30, reward_coins: 220 },
-  { id: 3, level_number: 3, name: 'Meteor Storm', distance: 5000, alien_count: 10, obstacle_density: 0.40, reward_coins: 300 },
-  { id: 4, level_number: 4, name: 'Deep Space Rift', distance: 6000, alien_count: 14, obstacle_density: 0.50, reward_coins: 400 },
-  { id: 5, level_number: 5, name: 'Mothership Gate', distance: 8000, alien_count: 20, obstacle_density: 0.60, reward_coins: 600 },
+  { id: 1, level_number: 1, name: 'The Moon', distance: 2500, alien_count: 4, obstacle_density: 0.18, reward_coins: 120, planet: 'planet1_moon' },
+  { id: 2, level_number: 2, name: 'Mars', distance: 3200, alien_count: 6, obstacle_density: 0.24, reward_coins: 170, planet: 'planet2_mars' },
+  { id: 3, level_number: 3, name: 'Venus', distance: 4000, alien_count: 8, obstacle_density: 0.30, reward_coins: 220, planet: 'planet3_venus' },
+  { id: 4, level_number: 4, name: 'Mercury', distance: 4800, alien_count: 10, obstacle_density: 0.36, reward_coins: 280, planet: 'planet4_mercury' },
+  { id: 5, level_number: 5, name: 'Jupiter', distance: 5600, alien_count: 12, obstacle_density: 0.42, reward_coins: 340, planet: 'planet5_jupiter' },
+  { id: 6, level_number: 6, name: 'Saturn', distance: 6400, alien_count: 15, obstacle_density: 0.48, reward_coins: 400, planet: 'planet6_saturn' },
+  { id: 7, level_number: 7, name: 'Uranus', distance: 7200, alien_count: 18, obstacle_density: 0.54, reward_coins: 470, planet: 'planet7_uranus' },
+  { id: 8, level_number: 8, name: 'Neptune', distance: 8000, alien_count: 22, obstacle_density: 0.60, reward_coins: 550, planet: 'planet8_neptune' },
 ];
+const LEVEL_PLANET_IMG = [null, 'planet1_moon', 'planet2_mars', 'planet3_venus', 'planet4_mercury', 'planet5_jupiter', 'planet6_saturn', 'planet7_uranus', 'planet8_neptune'];
 
 // ---------- Local persistent profile (Rupees wallet + level progress) ----------
 function loadLocalProfile() {
@@ -244,22 +248,25 @@ const ASSET_PATHS = {
   ships: { blue: CHAR_META.blue.img, purple: CHAR_META.purple.img },
   // Aliens now reuse the Purple Fighter art (flipped to face the player)
   // instead of the old 5-tier alien sprite set.
-  // Each obstacle type has its own base health (hits to destroy) and size multiplier.
-  // The elongated "block" ruins take more hits and render larger; the crystal
-  // spires/obelisks are the standard obstacle.
+  // Each obstacle type has a fixed health (hits to destroy). Size is fixed
+  // per obstacle (no per-instance randomness) via sizeMul.
   rocks: [
-    { src: 'assets/rocks/blue_block.png', health: 3, sizeMul: 1.35, glow: '100,180,255' },
-    { src: 'assets/rocks/purple_block.png', health: 3, sizeMul: 1.35, glow: '190,140,255' },
-    { src: 'assets/rocks/blue_obelisk.png', health: 2, sizeMul: 1.0, glow: '100,180,255' },
-    { src: 'assets/rocks/purple_obelisk.png', health: 2, sizeMul: 1.0, glow: '190,140,255' },
-    { src: 'assets/rocks/blue_mountain.png', health: 2, sizeMul: 1.0, glow: '100,180,255' },
-    { src: 'assets/rocks/icy_mountain.png', health: 2, sizeMul: 1.0, glow: '200,225,255' },
+    { src: 'assets/rocks/c1_purple.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/c2_blue.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/c3_blue.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/c4_blue.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/c5_purple.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/c6_purple.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/c7_icy.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/c8_blue.png', health: 2, sizeMul: 1.0 },
+    { src: 'assets/rocks/c9_blue.png', health: 2, sizeMul: 1.0 },
   ],
+  beams: { blue: 'assets/fx/beam_blue.png', purple: 'assets/fx/beam_purple.png' },
 };
 const SHIP_ROTATION_DEG = 0; // the blue/purple ship art is already drawn pointing straight up
 const ALIEN_ROTATION_DEG = 180;
 
-const Images = { bg: null, ships: {}, aliens: [], rocks: [] };
+const Images = { bg: null, ships: {}, aliens: [], rocks: [], beams: {} };
 function loadImage(src) {
   return new Promise(resolve => {
     const img = new Image();
@@ -274,6 +281,8 @@ async function preloadAssets() {
   shipEntries.forEach(([id, img]) => { Images.ships[id] = img; });
   Images.aliens = [Images.ships.purple]; // single shared sprite - no extra network request
   Images.rocks = await Promise.all(ASSET_PATHS.rocks.map(r => loadImage(r.src)));
+  const beamEntries = await Promise.all(Object.entries(ASSET_PATHS.beams).map(async ([id, src]) => [id, await loadImage(src)]));
+  beamEntries.forEach(([id, img]) => { Images.beams[id] = img; });
 }
 function alienTierForLevel(levelNumber) { return 0; }
 function alienTierForScore(score) { return 0; }
@@ -290,6 +299,7 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 
 const Screens = {
+  title: document.getElementById('title-screen'),
   home: document.getElementById('home-screen'),
   levelSelect: document.getElementById('level-select'),
   game: document.getElementById('game-ui'),
@@ -373,7 +383,7 @@ async function init() {
   state.levels = levels;
   await preloadAssets();
   applySettingsToUI();
-  showScreen('home');
+  showScreen('title');
 }
 function normalizeProfile(p) {
   return {
@@ -396,15 +406,16 @@ function renderLevelSelect() {
   list.innerHTML = '';
   state.levels.forEach(level => {
     const locked = level.level_number > state.profile.currentLevel;
-    const row = document.createElement('div');
-    row.className = 'level-row' + (locked ? ' locked' : '');
-    row.innerHTML = `<span>Level ${level.level_number}: ${level.name}</span>`;
-    const btn = document.createElement('button');
-    btn.textContent = locked ? '🔒' : '▶ PLAY';
-    btn.disabled = locked;
-    if (!locked) btn.onclick = () => startLevel(level.level_number);
-    row.appendChild(btn);
-    list.appendChild(row);
+    const planetKey = level.planet || LEVEL_PLANET_IMG[level.level_number];
+    const card = document.createElement('button');
+    card.className = 'planet-card' + (locked ? ' locked' : '');
+    card.disabled = locked;
+    card.innerHTML = `
+      <img src="assets/levels/${planetKey}.png" alt="${level.name}" />
+      ${locked ? '<div class="planet-lock">🔒</div>' : ''}
+    `;
+    if (!locked) card.onclick = () => startLevel(level.level_number);
+    list.appendChild(card);
   });
 }
 
@@ -426,6 +437,7 @@ function wizImgCard(id, imgSrc, label) {
 }
 function renderWizardDifficulty() {
   const el = document.getElementById('infinity-setup-content');
+  el.classList.remove('confirm-panel');
   el.innerHTML = `
     <div class="wizard-title">SELECT DIFFICULTY</div>
     <div class="wizard-options">
@@ -439,6 +451,7 @@ function renderWizardDifficulty() {
 }
 function renderWizardPlayers() {
   const el = document.getElementById('infinity-setup-content');
+  el.classList.remove('confirm-panel');
   el.innerHTML = `
     <div class="wizard-title">PLAYERS</div>
     <div class="wizard-options">
@@ -446,45 +459,51 @@ function renderWizardPlayers() {
       ${wizImgCard('wiz-p2', 'assets/ui/card_two.png', '2 Players')}
     </div>
     <button class="wizard-back" id="wiz-back-1">◀ BACK</button>`;
-  document.getElementById('wiz-p1').onclick = () => { Sound.click(); state.playerCount = 1; state.selectedChars = [equippedChar]; renderWizardConfirm(); };
-  document.getElementById('wiz-p2').onclick = () => { Sound.click(); state.playerCount = 2; state.selectedChars = ['blue', 'purple']; renderWizardConfirm(); };
+  document.getElementById('wiz-p1').onclick = () => { Sound.click(); state.playerCount = 1; renderWizardShipSelect(); };
+  document.getElementById('wiz-p2').onclick = () => { Sound.click(); state.playerCount = 2; state.selectedChars = ['blue', 'purple']; renderWizardShipSelect(); };
   document.getElementById('wiz-back-1').onclick = () => { Sound.click(); renderWizardDifficulty(); };
 }
-function shipPickCard(id) {
-  const c = CHARACTERS[id];
-  return `<div class="wizard-card ship-card-pick" id="wiz-ship-${id}">
-    <img src="${CHAR_META[id].img}" alt="${CHAR_META[id].name}" />
-    <span>${CHAR_META[id].name}</span>
-    <span style="opacity:.7">Lv ${c.level}</span>
-  </div>`;
+function shipPickCard(id, badge) {
+  const cardImg = id === 'blue' ? 'assets/ui/card_ship_blue.png' : 'assets/ui/card_ship_purple.png';
+  return `<button class="wizard-card-art ship-full-card" id="wiz-ship-${id}">
+    ${badge ? `<div class="ship-pick-badge">${badge}</div>` : ''}
+    <img src="${cardImg}" alt="${CHAR_META[id].name}" />
+  </button>`;
 }
 function renderWizardShipSelect() {
   const el = document.getElementById('infinity-setup-content');
+  el.classList.remove('confirm-panel');
+  const isTwoPlayer = state.playerCount === 2;
   el.innerHTML = `
-    <div class="wizard-title">CHOOSE YOUR SHIP</div>
+    <div class="wizard-title">${isTwoPlayer ? 'YOUR SHIPS' : 'CHOOSE YOUR SHIP'}</div>
     <div class="wizard-options">
-      ${shipPickCard('blue')}
-      ${shipPickCard('purple')}
+      ${shipPickCard('blue', isTwoPlayer ? 'P1' : '')}
+      ${shipPickCard('purple', isTwoPlayer ? 'P2' : '')}
     </div>
+    ${isTwoPlayer ? '<button id="wiz-ships-continue">▶ CONTINUE</button>' : ''}
     <button class="wizard-back" id="wiz-back-2">◀ BACK</button>`;
-  CHAR_IDS.forEach(id => {
-    document.getElementById('wiz-ship-' + id).onclick = () => { Sound.click(); state.selectedChars = [id]; renderWizardConfirm(); };
-  });
+  if (isTwoPlayer) {
+    // Both ships are already locked in (P1 = Blue, P2 = Purple) - this step is
+    // shown so both players see their assigned ship before starting.
+    document.getElementById('wiz-ships-continue').onclick = () => { Sound.click(); renderWizardConfirm(); };
+  } else {
+    CHAR_IDS.forEach(id => {
+      document.getElementById('wiz-ship-' + id).onclick = () => { Sound.click(); state.selectedChars = [id]; renderWizardConfirm(); };
+    });
+  }
   document.getElementById('wiz-back-2').onclick = () => { Sound.click(); renderWizardPlayers(); };
 }
 function renderWizardConfirm() {
   const el = document.getElementById('infinity-setup-content');
+  el.classList.add('confirm-panel');
   const names = state.selectedChars.map(id => CHAR_META[id].name).join(' & ');
   el.innerHTML = `
     <div class="wizard-title">READY?</div>
     <p class="wizard-summary">${state.difficulty.toUpperCase()} &nbsp;&middot;&nbsp; ${state.playerCount === 2 ? '2 Players' : '1 Player'} &nbsp;&middot;&nbsp; ${names}</p>
-    <button id="wiz-start">▶ START</button>
+    <button id="wiz-start" class="art-btn start-btn"><img src="assets/ui/btn_start.png" alt="Start" /></button>
     <button class="wizard-back" id="wiz-back-3">◀ BACK</button>`;
   document.getElementById('wiz-start').onclick = () => { Sound.click(); showOverlay(null); startInfinity(); };
-  document.getElementById('wiz-back-3').onclick = () => {
-    Sound.click();
-    renderWizardPlayers();
-  };
+  document.getElementById('wiz-back-3').onclick = () => { Sound.click(); renderWizardShipSelect(); };
 }
 
 // ==========================================================
@@ -518,7 +537,6 @@ function resetRunState() {
 
   resizeCanvas();
   state.players = buildPlayers(state.selectedChars);
-  maintainObstacles();
 
   HUD.hullBarP2.classList.toggle('hidden', state.selectedChars.length < 2);
   HUD.dpadP2.classList.toggle('hidden', state.selectedChars.length < 2);
@@ -618,14 +636,26 @@ function difficultyMultiplier() {
 function maybeSpawn(dt, now) {
   const mult = difficultyMultiplier();
   const baseDensity = state.currentLevel.obstacle_density * mult;
-  maintainObstacles();
 
   const spawnInterval = Math.max(160, (900 - baseDensity * 900) / mult);
   if (now - state.lastSpawn < spawnInterval) return;
   state.lastSpawn = now;
 
   const roll = Math.random();
-  if (roll < 0.35 && state.aliens.length < (state.currentLevel.alien_count || 6) * mult) {
+  if (roll < 0.42) {
+    const imgIndex = Math.floor(Math.random() * ASSET_PATHS.rocks.length);
+    const rockType = ASSET_PATHS.rocks[imgIndex];
+    const img = Images.rocks[imgIndex];
+    const aspect = img ? img.height / img.width : 1;
+    const w = 64 * rockType.sizeMul; // fixed size per type - no per-instance randomness
+    const h = w * aspect;
+    state.obstacles.push({
+      x: Math.random() * (canvas.width - w), y: -h,
+      w, h,
+      vy: (1.1 + Math.random() * 1.1 + baseDensity * 1.1) * mult,
+      imgIndex, hp: rockType.health, maxHp: rockType.health
+    });
+  } else if (roll < 0.68 && state.aliens.length < (state.currentLevel.alien_count || 6) * mult) {
     const baseTier = state.mode === 'levels'
       ? alienTierForLevel(state.currentLevel.level_number || 1)
       : alienTierForScore(state.score);
@@ -635,7 +665,7 @@ function maybeSpawn(dt, now) {
       w: 38, h: 38, vy: (1.4 + Math.random() * 1.2) * mult,
       lastShot: now, shotInterval: Math.max(500, 1400 - baseDensity * 500), tier
     });
-  } else if (roll < 0.75) {
+  } else if (roll < 0.85) {
     state.coins.push({ x: Math.random() * (canvas.width - 20), y: -20, w: 20, h: 20, vy: 2.5 * mult });
   } else {
     const types = Object.keys(POWER_TYPES);
@@ -643,36 +673,6 @@ function maybeSpawn(dt, now) {
     const size = 26;
     state.powerups.push({ x: Math.random() * (canvas.width - size), y: -size, w: size, h: size, vy: 2.3 * mult, type });
   }
-}
-
-// Obstacles are a maintained static field: fixed position and fixed size per
-// type once spawned - they never move or fall, they just sit in space until
-// shot down, at which point a replacement appears elsewhere to keep the
-// field populated.
-function targetObstacleCount() {
-  const mult = difficultyMultiplier();
-  const baseDensity = state.currentLevel.obstacle_density * mult;
-  return Math.max(3, Math.min(10, Math.round(4 + baseDensity * 6)));
-}
-function spawnStaticObstacle() {
-  const imgIndex = Math.floor(Math.random() * ASSET_PATHS.rocks.length);
-  const rockType = ASSET_PATHS.rocks[imgIndex];
-  const img = Images.rocks[imgIndex];
-  const aspect = img ? img.height / img.width : 1;
-  const w = 64 * rockType.sizeMul; // fixed size per type - no per-instance randomness
-  const h = w * aspect;
-  let x, y, tries = 0;
-  const safeTop = 70, safeBottom = 150; // keep clear of the HUD and the D-pad controls
-  do {
-    x = Math.random() * Math.max(1, canvas.width - w);
-    y = safeTop + Math.random() * Math.max(1, canvas.height - h - safeTop - safeBottom);
-    tries++;
-  } while (tries < 12 && state.obstacles.some(o => rectsOverlap({ x: x - 24, y: y - 24, w: w + 48, h: h + 48 }, o)));
-  state.obstacles.push({ x, y, w, h, imgIndex, hp: rockType.health, maxHp: rockType.health });
-}
-function maintainObstacles() {
-  const target = targetObstacleCount();
-  while (state.obstacles.length < target) spawnStaticObstacle();
 }
 
 // ==========================================================
@@ -705,7 +705,7 @@ function shatterRock(o) {
     return mask.data[(y * mask.w + x) * 4 + 3];
   };
   const area = mask.w * mask.h;
-  const numPoints = Math.min(40, Math.max(8, Math.round(area / 2800)));
+  const numPoints = Math.min(70, Math.max(18, Math.round(area / 1300)));
   const points = [];
   let attempts = 0;
   while (points.length < numPoints && attempts < numPoints * 60) {
@@ -759,7 +759,6 @@ function shatterRock(o) {
       vx: (fromCX / dist) * speed, vy: (fromCY / dist) * speed - 1,
       rot: (Math.random() - 0.5) * 0.5, vrot: (Math.random() - 0.5) * 0.15,
       alpha: 1, life: 0, fadeStart: 20 + Math.random() * 15,
-      glow: rockType.glow,
     });
   }
   Sound.explosion();
@@ -781,7 +780,6 @@ function drawShards() {
     ctx.globalAlpha = Math.max(p.alpha, 0);
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
-    if (p.glow) { ctx.shadowColor = `rgba(${p.glow},0.85)`; ctx.shadowBlur = 10; }
     ctx.drawImage(p.canvas, -p.cx, -p.cy);
     ctx.restore();
   });
@@ -810,10 +808,10 @@ function update(dt, now) {
     if (now - p.lastShotAt > stats.fireRate) {
       p.lastShotAt = now;
       if (isPowerActive(p, 'doubleGun')) {
-        state.bullets.push({ x: p.x + 4, y: p.y, w: 6, h: 14, vy: -9 });
-        state.bullets.push({ x: p.x + p.w - 10, y: p.y, w: 6, h: 14, vy: -9 });
+        state.bullets.push({ x: p.x + 4, y: p.y, w: 20, h: 9, vy: -9, char: p.char });
+        state.bullets.push({ x: p.x + p.w - 24, y: p.y, w: 20, h: 9, vy: -9, char: p.char });
       } else {
-        state.bullets.push({ x: p.x + p.w / 2 - 3, y: p.y, w: 6, h: 14, vy: -9 });
+        state.bullets.push({ x: p.x + p.w / 2 - 10, y: p.y, w: 20, h: 9, vy: -9, char: p.char });
       }
       Sound.shoot();
     }
@@ -834,6 +832,7 @@ function update(dt, now) {
 
   maybeSpawn(dt, now);
   updateShards(dt);
+  moveEntities(state.obstacles, dt);
   moveEntities(state.coins, dt);
   moveEntities(state.powerups, dt);
   moveEntities(state.bullets, dt, true);
@@ -993,7 +992,7 @@ function draw() {
   state.aliens.forEach(a => drawAlien(a));
   drawShards();
 
-  state.bullets.forEach(b => drawProjectedRect(b, '#00e5ff'));
+  state.bullets.forEach(b => drawPlasmaBeam(b));
   state.alienBullets.forEach(b => drawProjectedRect(b, '#ff1744'));
 
   state.players.forEach(p => { if (p.alive) drawShip(p); });
@@ -1004,6 +1003,19 @@ function drawProjectedRect(obj, color) {
   const pr = project(obj);
   ctx.fillStyle = color;
   ctx.fillRect(pr.cx - pr.w / 2, pr.cy - pr.h / 2, pr.w, pr.h);
+}
+
+function drawPlasmaBeam(b) {
+  const img = Images.beams[b.char];
+  if (!img) { drawProjectedRect(b, '#00e5ff'); return; }
+  const pr = project(b);
+  const beamLen = pr.w * 3.2;                        // length along the travel direction
+  const beamThick = beamLen * (img.height / img.width); // thickness, keeping the source aspect ratio
+  ctx.save();
+  ctx.translate(pr.cx, pr.cy);
+  ctx.rotate(-Math.PI / 2); // source art's long axis is horizontal - rotate so it points up the screen
+  ctx.drawImage(img, -beamLen / 2, -beamThick / 2, beamLen, beamThick);
+  ctx.restore();
 }
 
 function drawHorizonFog() {
@@ -1235,12 +1247,39 @@ window.addEventListener('keyup', e => {
 window.addEventListener('pointerdown', () => Sound.ensureCtx(), { once: true });
 document.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => Sound.click()));
 
+// ---------- Toast (honest feedback for features not built yet) ----------
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  requestAnimationFrame(() => t.classList.add('show'));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => t.classList.add('hidden'), 250);
+  }, 1600);
+}
+
+// ---------- Title screen (real entry point) ----------
+document.getElementById('hotspot-play').addEventListener('click', () => { showScreen('home'); });
+document.getElementById('hotspot-settings').addEventListener('click', () => showOverlay('settings'));
+document.getElementById('hotspot-upgrade').addEventListener('click', () => { renderShop(); showOverlay('shop'); });
+document.getElementById('hotspot-ship').addEventListener('click', () => { renderShop(); showOverlay('shop'); });
+document.getElementById('hotspot-daily-reward').addEventListener('click', () => showToast('🎁 Daily Reward — coming soon!'));
+document.getElementById('hotspot-achievements').addEventListener('click', () => showToast('🏆 Achievements — coming soon!'));
+document.getElementById('hotspot-daily-missions').addEventListener('click', () => showToast('📅 Daily Missions — coming soon!'));
+document.getElementById('hotspot-free-rewards').addEventListener('click', () => showToast('🎁 Free Rewards — coming soon!'));
+document.getElementById('hotspot-special-offer').addEventListener('click', () => showToast('✨ Special Offer — coming soon!'));
+
 // ---------- Home screen ----------
 document.getElementById('mode-levels').addEventListener('click', () => { renderLevelSelect(); showScreen('levelSelect'); });
 document.getElementById('mode-infinity').addEventListener('click', () => startInfinityWizard());
 document.getElementById('btn-level-select-back').addEventListener('click', () => showScreen('home'));
 document.getElementById('btn-settings-home').addEventListener('click', () => showOverlay('settings'));
 document.getElementById('btn-shop-home').addEventListener('click', () => { renderShop(); showOverlay('shop'); });
+document.getElementById('btn-settings-levels').addEventListener('click', () => showOverlay('settings'));
+document.getElementById('btn-shop-levels').addEventListener('click', () => { renderShop(); showOverlay('shop'); });
 
 // ---------- In-game ----------
 document.getElementById('btn-pause-ingame').addEventListener('click', togglePause);

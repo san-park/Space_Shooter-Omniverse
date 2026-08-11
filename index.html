@@ -10,8 +10,24 @@
 
   <div id="game-container">
 
-    <!-- ============ HOME SCREEN ============ -->
-    <div id="home-screen" class="screen">
+    <!-- ============ TITLE SCREEN (real entry point - full art, exact hotspots) ============ -->
+    <div id="title-screen" class="screen">
+      <div class="title-frame">
+        <img src="assets/ui/title_screen.jpg" alt="Space Shooter" class="title-bg" />
+        <button id="hotspot-settings" class="title-hotspot" style="left:79.8%;top:0%;width:9.4%;height:15.1%;" title="Settings"></button>
+        <button id="hotspot-upgrade" class="title-hotspot" style="left:90.5%;top:0%;width:9.4%;height:15.1%;" title="Upgrade"></button>
+        <button id="hotspot-daily-reward" class="title-hotspot" style="left:1.0%;top:34.7%;width:15.9%;height:6.3%;" title="Daily Reward"></button>
+        <button id="hotspot-achievements" class="title-hotspot" style="left:1.0%;top:42.0%;width:15.9%;height:5.9%;" title="Achievements"></button>
+        <button id="hotspot-daily-missions" class="title-hotspot" style="left:1.0%;top:49.3%;width:15.9%;height:6.3%;" title="Daily Missions"></button>
+        <button id="hotspot-free-rewards" class="title-hotspot" style="left:1.0%;top:59.1%;width:15.9%;height:5.9%;" title="Free Rewards"></button>
+        <button id="hotspot-special-offer" class="title-hotspot" style="left:77.8%;top:56.6%;width:19.9%;height:21.5%;" title="Special Offer"></button>
+        <button id="hotspot-play" class="title-hotspot" style="left:27.7%;top:78.1%;width:42.3%;height:12.2%;" title="Play"></button>
+        <button id="hotspot-ship" class="title-hotspot" style="left:77.8%;top:83.0%;width:19.9%;height:11.7%;" title="Ship"></button>
+      </div>
+    </div>
+
+    <!-- ============ HOME SCREEN (mode select) ============ -->
+    <div id="home-screen" class="screen hidden">
       <div class="top-right-buttons">
         <button id="btn-settings-home" class="icon-btn" title="Settings">⚙️</button>
         <button id="btn-shop-home" class="icon-btn" title="Shipyard">🛠️</button>
@@ -31,6 +47,10 @@
 
     <!-- ============ LEVEL SELECT ============ -->
     <div id="level-select" class="screen hidden">
+      <div class="top-right-buttons">
+        <button id="btn-settings-levels" class="icon-btn" title="Settings">⚙️</button>
+        <button id="btn-shop-levels" class="icon-btn" title="Shipyard">🛠️</button>
+      </div>
       <h2>SELECT LEVEL</h2>
       <div id="level-list"></div>
       <button class="back-btn" id="btn-level-select-back">◀ BACK</button>
@@ -156,6 +176,8 @@
       <div id="shop-list"></div>
       <button id="btn-close-shop">✖ CLOSE</button>
     </div>
+
+    <div id="toast" class="hidden"></div>
 
   </div>
 

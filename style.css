@@ -20,6 +20,50 @@ html, body {
 
 .hidden { display: none !important; }
 
+/* ---------- TITLE SCREEN (real entry point - full uncropped art) ---------- */
+#title-screen {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #000;
+}
+.title-frame {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1536 / 1024; /* locks to the source art's exact proportions */
+  margin: auto;
+}
+.title-bg { display: block; width: 100%; height: 100%; object-fit: fill; }
+.title-hotspot {
+  position: absolute;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  /* uncomment to debug hotspot alignment: background: rgba(255,0,0,0.25); */
+}
+.title-hotspot:active { background: rgba(255,255,255,0.15); border-radius: 8px; }
+
+/* ---------- Toast (honest feedback for not-yet-built features) ---------- */
+#toast {
+  position: absolute;
+  top: 46%; left: 50%;
+  transform: translate(-50%,-50%);
+  z-index: 100;
+  background: rgba(5,6,15,0.92);
+  border: 1px solid rgba(255,255,255,0.25);
+  padding: 14px 22px;
+  border-radius: 12px;
+  font-size: 14px;
+  text-align: center;
+  max-width: 260px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+#toast.show { opacity: 1; }
+
 /* ---------- generic top-right icon buttons ---------- */
 .top-right-buttons {
   position: absolute;
@@ -89,24 +133,25 @@ html, body {
   padding: 20px;
 }
 #level-list {
-  display: flex; flex-direction: column; gap: 10px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
   width: 100%; max-width: 340px;
-  max-height: 55vh; overflow-y: auto;
+  max-height: 62vh; overflow-y: auto;
 }
-.level-row {
-  display: flex; align-items: center; justify-content: space-between;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 10px;
-  padding: 12px 16px;
-  font-size: 14px;
+.planet-card {
+  position: relative;
+  border: none; background: none; padding: 0;
+  border-radius: 12px; overflow: hidden;
+  cursor: pointer;
 }
-.level-row.locked { opacity: 0.45; }
-.level-row button {
-  padding: 6px 14px; border: none; border-radius: 8px;
-  background: linear-gradient(180deg,#00e5ff,#0091ea); color:#001018; font-weight:bold;
+.planet-card img { display: block; width: 100%; height: auto; border-radius: 12px; }
+.planet-card:active { transform: scale(0.96); }
+.planet-card.locked { opacity: 0.4; cursor: not-allowed; }
+.planet-lock {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px;
+  background: rgba(0,0,0,0.35);
 }
-.level-row button:disabled { background:#333; color:#888; }
 .back-btn {
   padding: 10px 22px; border: none; border-radius: 10px;
   background: rgba(255,255,255,0.12); color: #e6f1ff;
@@ -250,6 +295,7 @@ html, body {
 }
 .art-btn img { display: block; width: 96px; height: auto; }
 .art-btn.big img { width: 118px; }
+.art-btn.start-btn img { width: 220px; }
 .art-btn:active { transform: scale(0.94); }
 .art-btn:hover { filter: drop-shadow(0 0 10px rgba(255,255,255,0.35)); }
 .hint { font-size: 12px; opacity: 0.6; }
@@ -345,6 +391,11 @@ html, body {
   box-shadow: 0 0 28px rgba(0,229,255,0.35), inset 0 0 20px rgba(0,229,255,0.08);
 }
 .wizard-title { font-size: 20px; letter-spacing: 2px; }
+#infinity-setup-content.confirm-panel {
+  border: 3px solid transparent;
+  border-image: linear-gradient(135deg, #00e5ff, #a259ff) 1;
+  box-shadow: 0 0 28px rgba(162,89,255,0.35), inset 0 0 20px rgba(0,229,255,0.08);
+}
 .wizard-options { display: flex; gap: 10px; flex-wrap: nowrap; justify-content: center; width: 100%; }
 .wizard-card {
   width: 100px; min-height: 90px;
@@ -357,8 +408,15 @@ html, body {
 .wizard-card:active { transform: scale(0.95); }
 .wizard-card .w-icon { font-size: 28px; }
 .wizard-card span { font-size: 12px; font-weight: bold; letter-spacing: 1px; }
-.wizard-card.ship-card-pick { width: 130px; }
+.wizard-card.ship-card-pick { width: 130px; position: relative; }
 .wizard-card.ship-card-pick img { width: 60px; height: auto; }
+.ship-pick-badge {
+  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+  background: linear-gradient(180deg,#ffd600,#ff9100);
+  color: #201400; font-size: 11px; font-weight: bold;
+  padding: 3px 10px; border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
 .wizard-card-art {
   width: auto; height: auto; min-height: 0;
   border: none; background: none; padding: 0;
@@ -366,6 +424,8 @@ html, body {
 }
 .wizard-card-art img { display: block; width: 28vw; max-width: 108px; min-width: 76px; height: auto; border-radius: 10px; }
 .wizard-card-art:hover { filter: drop-shadow(0 0 10px rgba(255,255,255,0.3)); }
+.ship-full-card { position: relative; }
+.ship-full-card img { width: 42vw; max-width: 160px; min-width: 120px; }
 .wizard-back { margin-top: 4px; background: rgba(255,255,255,0.12) !important; }
 .wizard-summary { font-size: 13px; opacity: 0.85; text-align: center; }
 
