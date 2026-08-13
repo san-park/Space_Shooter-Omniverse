@@ -160,7 +160,7 @@ const Sound = {
   musicOn: localStorage.getItem('gr_music') !== '0',
   soundOn: localStorage.getItem('gr_sound') !== '0',
   volume: parseInt(localStorage.getItem('gr_volume') || '70', 10) / 100,
-  musicTimer: null,
+  musicEl: null, shootPool: null, _filesReady: false,
 
   ensureCtx() {
     if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -180,7 +180,29 @@ const Sound = {
     osc.connect(gain).connect(this.ctx.destination);
     osc.start(t0); osc.stop(t0 + duration);
   },
-  shoot() { this.tone(880, 220, 0.1, 'square', 0.06); },
+  initAudioFiles() {
+    if (this._filesReady) return;
+    this._filesReady = true;
+    this.musicEl = new Audio('assets/audio/music.mp3');
+    this.musicEl.loop = true; // repeats continuously
+    this.musicEl.volume = this.volume;
+    this.shootPool = [];
+    for (let i = 0; i < 6; i++) {
+      const a = new Audio('assets/audio/shoot.mp3');
+      a.volume = this.volume * 0.5;
+      this.shootPool.push(a);
+    }
+    this.shootPoolIndex = 0;
+  },
+  shoot() {
+    if (!this.soundOn) return;
+    this.initAudioFiles();
+    const a = this.shootPool[this.shootPoolIndex];
+    this.shootPoolIndex = (this.shootPoolIndex + 1) % this.shootPool.length;
+    a.currentTime = 0;
+    a.volume = this.volume * 0.5;
+    a.play().catch(() => {});
+  },
   explosion() {
     if (!this.soundOn) return;
     this.ensureCtx();
@@ -212,32 +234,28 @@ const Sound = {
   lose() { if (this.soundOn) [400, 320, 240, 160].forEach((f, i) => setTimeout(() => this.tone(f, f * 0.8, 0.25, 'sawtooth', 0.12), i * 150)); },
 
   startMusic() {
-    if (this.musicTimer) return;
-    this.ensureCtx();
-    const notes = [220, 277, 330, 277, 220, 165, 220, 277, 330, 392, 330, 277, 220, 165, 196, 220];
-    let i = 0;
-    const playNext = () => {
-      if (this.musicOn) {
-        this.ensureCtx();
-        const t0 = this.ctx.currentTime;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(notes[i], t0);
-        gain.gain.setValueAtTime(0.05 * this.volume, t0);
-        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.24);
-        osc.connect(gain).connect(this.ctx.destination);
-        osc.start(t0); osc.stop(t0 + 0.25);
-      }
-      i = (i + 1) % notes.length;
-      this.musicTimer = setTimeout(playNext, 260);
-    };
-    playNext();
+    this.initAudioFiles();
+    if (!this.musicOn) return;
+    this.musicEl.volume = this.volume;
+    this.musicEl.play().catch(() => {}); // browsers require a user gesture first - retried on first tap
   },
-  stopMusic() { if (this.musicTimer) { clearTimeout(this.musicTimer); this.musicTimer = null; } },
-  setMusicOn(v) { this.musicOn = v; localStorage.setItem('gr_music', v ? '1' : '0'); },
+  stopMusic() {
+    if (this.musicEl) this.musicEl.pause();
+  },
+  setMusicOn(v) {
+    this.musicOn = v;
+    localStorage.setItem('gr_music', v ? '1' : '0');
+    this.initAudioFiles();
+    if (v) this.musicEl.play().catch(() => {});
+    else this.musicEl.pause();
+  },
   setSoundOn(v) { this.soundOn = v; localStorage.setItem('gr_sound', v ? '1' : '0'); },
-  setVolume(v) { this.volume = v; localStorage.setItem('gr_volume', Math.round(v * 100)); },
+  setVolume(v) {
+    this.volume = v;
+    localStorage.setItem('gr_volume', Math.round(v * 100));
+    if (this.musicEl) this.musicEl.volume = v;
+    if (this.shootPool) this.shootPool.forEach(a => { a.volume = v * 0.5; });
+  },
 };
 
 // ==========================================================
@@ -429,22 +447,19 @@ function startInfinityWizard() {
   showOverlay('infinitySetup');
   renderWizardDifficulty();
 }
-function wizCard(id, icon, label) {
-  return `<div class="wizard-card" id="${id}"><div class="w-icon">${icon}</div><span>${label}</span></div>`;
-}
-function wizImgCard(id, imgSrc, label) {
-  return `<button class="wizard-card wizard-card-art" id="${id}"><img src="${imgSrc}" alt="${label}" /></button>`;
-}
 function renderWizardDifficulty() {
   const el = document.getElementById('infinity-setup-content');
   el.classList.remove('confirm-panel');
+  el.classList.add('photo-step');
   el.innerHTML = `
-    <div class="wizard-title">SELECT DIFFICULTY</div>
-    <div class="wizard-options">
-      ${wizImgCard('wiz-diff-easy', 'assets/ui/card_easy.png', 'Easy')}
-      ${wizImgCard('wiz-diff-normal', 'assets/ui/card_normal.png', 'Normal')}
-      ${wizImgCard('wiz-diff-hard', 'assets/ui/card_hard.png', 'Hard')}
+    <div class="frame-photo-wrap">
+      <img src="assets/ui/frame_difficulty.jpg" alt="Select difficulty" />
+      <button id="wiz-diff-back" class="frame-hotspot" style="left:3.91%;top:6.35%;width:13.02%;height:7.32%;" title="Back"></button>
+      <button id="wiz-diff-easy" class="frame-hotspot" style="left:7.49%;top:23.93%;width:22.79%;height:63.48%;" title="Easy"></button>
+      <button id="wiz-diff-normal" class="frame-hotspot" style="left:33.85%;top:23.93%;width:22.79%;height:63.48%;" title="Normal"></button>
+      <button id="wiz-diff-hard" class="frame-hotspot" style="left:58.59%;top:23.93%;width:21.81%;height:63.48%;" title="Hard"></button>
     </div>`;
+  document.getElementById('wiz-diff-back').onclick = () => { Sound.click(); showOverlay(null); showScreen('home'); };
   ['easy', 'normal', 'hard'].forEach(d => {
     document.getElementById('wiz-diff-' + d).onclick = () => { Sound.click(); state.difficulty = d; renderWizardPlayers(); };
   });
@@ -452,46 +467,41 @@ function renderWizardDifficulty() {
 function renderWizardPlayers() {
   const el = document.getElementById('infinity-setup-content');
   el.classList.remove('confirm-panel');
+  el.classList.add('photo-step');
   el.innerHTML = `
-    <div class="wizard-title">PLAYERS</div>
-    <div class="wizard-options">
-      ${wizImgCard('wiz-p1', 'assets/ui/card_solo.png', '1 Player')}
-      ${wizImgCard('wiz-p2', 'assets/ui/card_two.png', '2 Players')}
-    </div>
-    <button class="wizard-back" id="wiz-back-1">◀ BACK</button>`;
+    <div class="frame-photo-wrap">
+      <img src="assets/ui/frame_players.jpg" alt="Players: Play Solo or Two Players" />
+      <button id="wiz-back-1" class="frame-hotspot" style="left:3.58%;top:5.37%;width:11.72%;height:4.39%;" title="Back"></button>
+      <button id="wiz-p1" class="frame-hotspot" style="left:18.23%;top:21.00%;width:24.09%;height:51.5%;" title="Play Solo"></button>
+      <button id="wiz-p2" class="frame-hotspot" style="left:46.55%;top:21.00%;width:23.44%;height:51.5%;" title="Two Players"></button>
+    </div>`;
   document.getElementById('wiz-p1').onclick = () => { Sound.click(); state.playerCount = 1; renderWizardShipSelect(); };
   document.getElementById('wiz-p2').onclick = () => { Sound.click(); state.playerCount = 2; state.selectedChars = ['blue', 'purple']; renderWizardShipSelect(); };
   document.getElementById('wiz-back-1').onclick = () => { Sound.click(); renderWizardDifficulty(); };
 }
-function shipPickCard(id, badge) {
-  const cardImg = id === 'blue' ? 'assets/ui/card_ship_blue.png' : 'assets/ui/card_ship_purple.png';
-  return `<button class="wizard-card-art ship-full-card" id="wiz-ship-${id}">
-    ${badge ? `<div class="ship-pick-badge">${badge}</div>` : ''}
-    <img src="${cardImg}" alt="${CHAR_META[id].name}" />
-  </button>`;
-}
 function renderWizardShipSelect() {
   const el = document.getElementById('infinity-setup-content');
   el.classList.remove('confirm-panel');
+  el.classList.add('photo-step');
   const isTwoPlayer = state.playerCount === 2;
   el.innerHTML = `
-    <div class="wizard-title">${isTwoPlayer ? 'YOUR SHIPS' : 'CHOOSE YOUR SHIP'}</div>
-    <div class="wizard-options">
-      ${shipPickCard('blue', isTwoPlayer ? 'P1' : '')}
-      ${shipPickCard('purple', isTwoPlayer ? 'P2' : '')}
-    </div>
-    ${isTwoPlayer ? '<button id="wiz-ships-continue">▶ CONTINUE</button>' : ''}
-    <button class="wizard-back" id="wiz-back-2">◀ BACK</button>`;
+    <div class="frame-photo-wrap">
+      <img src="assets/ui/frame_ship.jpg" alt="Select your ship: Blue Ship or Purple Ship" />
+      <button id="wiz-ship-back" class="frame-hotspot" style="left:3.91%;top:5.86%;width:11.07%;height:5.37%;" title="Back"></button>
+      <button id="wiz-ship-blue" class="frame-hotspot" style="left:5.86%;top:19.04%;width:34.83%;height:66.9%;" title="Blue Ship"></button>
+      <button id="wiz-ship-purple" class="frame-hotspot" style="left:45.90%;top:19.04%;width:34.83%;height:66.9%;" title="Purple Ship"></button>
+    </div>`;
+  document.getElementById('wiz-ship-back').onclick = () => { Sound.click(); renderWizardPlayers(); };
   if (isTwoPlayer) {
-    // Both ships are already locked in (P1 = Blue, P2 = Purple) - this step is
-    // shown so both players see their assigned ship before starting.
-    document.getElementById('wiz-ships-continue').onclick = () => { Sound.click(); renderWizardConfirm(); };
+    // Both ships are already locked in (P1 = Blue, P2 = Purple) - either
+    // hotspot just continues, since choosing doesn't apply in 2-player mode.
+    document.getElementById('wiz-ship-blue').onclick = () => { Sound.click(); renderWizardConfirm(); };
+    document.getElementById('wiz-ship-purple').onclick = () => { Sound.click(); renderWizardConfirm(); };
   } else {
     CHAR_IDS.forEach(id => {
       document.getElementById('wiz-ship-' + id).onclick = () => { Sound.click(); state.selectedChars = [id]; renderWizardConfirm(); };
     });
   }
-  document.getElementById('wiz-back-2').onclick = () => { Sound.click(); renderWizardPlayers(); };
 }
 function renderWizardConfirm() {
   const el = document.getElementById('infinity-setup-content');
@@ -1100,7 +1110,7 @@ function togglePause() {
 // ==========================================================
 async function winLevel() {
   state.running = false;
-  Sound.stopMusic(); Sound.win();
+  Sound.win();
   const totalCoins = state.coinsThisRun + state.currentLevel.reward_coins;
   document.getElementById('win-summary').textContent =
     `Level ${state.currentLevel.level_number} cleared! +${totalCoins} Rupees earned.`;
@@ -1112,7 +1122,7 @@ async function winLevel() {
 async function loseRun() {
   if (!state.running) return;
   state.running = false;
-  Sound.stopMusic(); Sound.lose();
+  Sound.lose();
   const loseTitle = document.getElementById('lose-title');
   const loseSummary = document.getElementById('lose-summary');
 
@@ -1244,7 +1254,7 @@ window.addEventListener('keyup', e => {
   }
 });
 
-window.addEventListener('pointerdown', () => Sound.ensureCtx(), { once: true });
+window.addEventListener('pointerdown', () => { Sound.ensureCtx(); Sound.startMusic(); }, { once: true });
 document.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => Sound.click()));
 
 // ---------- Toast (honest feedback for features not built yet) ----------
@@ -1286,7 +1296,8 @@ document.getElementById('btn-pause-ingame').addEventListener('click', togglePaus
 
 // ---------- Pause overlay ----------
 document.getElementById('btn-pause-resume').addEventListener('click', togglePause);
-document.getElementById('btn-pause-home').addEventListener('click', () => { state.running = false; Sound.stopMusic(); showOverlay(null); showScreen('home'); });
+document.getElementById('btn-pause-back').addEventListener('click', togglePause);
+document.getElementById('btn-pause-home').addEventListener('click', () => { state.running = false; showOverlay(null); showScreen('home'); });
 document.getElementById('btn-pause-restart').addEventListener('click', () => {
   showOverlay(null);
   if (state.mode === 'levels') startLevel(state.currentLevel.level_number); else startInfinity();

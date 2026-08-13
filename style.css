@@ -28,10 +28,14 @@ html, body {
 }
 .title-frame {
   position: relative;
-  width: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  aspect-ratio: 1536 / 1024; /* locks to the source art's exact proportions */
+  /* Exact 1536:1024 (3:2) aspect ratio, computed explicitly via min() instead of
+     the CSS aspect-ratio property - on wide/short viewports (laptops) aspect-ratio
+     combined with width:100% inside a flex container does not reliably respect
+     max-height across browsers, which let the frame grow taller than the screen
+     and pushed the PLAY button off the bottom edge. min() has no such ambiguity:
+     it always picks whichever dimension the viewport actually limits. */
+  width: min(100vw, 150vh);
+  height: min(100vh, 66.667vw);
   margin: auto;
 }
 .title-bg { display: block; width: 100%; height: 100%; object-fit: fill; }
@@ -44,6 +48,26 @@ html, body {
   /* uncomment to debug hotspot alignment: background: rgba(255,0,0,0.25); */
 }
 .title-hotspot:active { background: rgba(255,255,255,0.15); border-radius: 8px; }
+
+/* ---------- Reusable full-frame + hotspot pattern for overlays ----------
+   Same technique as the title screen (exact aspect ratio via min(), no crop,
+   no distortion) but sized to fit inside a padded overlay rather than the
+   full viewport. */
+.frame-photo-wrap {
+  position: relative;
+  width: min(94vw, 141vh);
+  height: min(94vh, 62.667vw);
+  margin: auto;
+}
+.frame-photo-wrap img { display: block; width: 100%; height: 100%; object-fit: fill; }
+.frame-hotspot {
+  position: absolute;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.frame-hotspot:active { background: rgba(255,255,255,0.15); border-radius: 8px; }
 
 /* ---------- Toast (honest feedback for not-yet-built features) ---------- */
 #toast {
@@ -395,6 +419,9 @@ html, body {
   border: 3px solid transparent;
   border-image: linear-gradient(135deg, #00e5ff, #a259ff) 1;
   box-shadow: 0 0 28px rgba(162,89,255,0.35), inset 0 0 20px rgba(0,229,255,0.08);
+}
+#infinity-setup-content.photo-step {
+  border: none; background: none; box-shadow: none; padding: 0; max-width: none;
 }
 .wizard-options { display: flex; gap: 10px; flex-wrap: nowrap; justify-content: center; width: 100%; }
 .wizard-card {
