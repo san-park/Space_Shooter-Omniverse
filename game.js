@@ -160,7 +160,7 @@ const Sound = {
   musicOn: localStorage.getItem('gr_music') !== '0',
   soundOn: localStorage.getItem('gr_sound') !== '0',
   volume: parseInt(localStorage.getItem('gr_volume') || '70', 10) / 100,
-  musicEl: null, shootPool: null, _filesReady: false,
+  musicEl: null, shootPool: null, _filesReady: false, _wantMusic: false, _musicGapTimer: null,
 
   ensureCtx() {
     if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -184,8 +184,16 @@ const Sound = {
     if (this._filesReady) return;
     this._filesReady = true;
     this.musicEl = new Audio('assets/audio/music.mp3');
-    this.musicEl.loop = true; // repeats continuously
+    this.musicEl.loop = false; // manual loop below, with a gap before repeating
     this.musicEl.volume = this.volume;
+    this.musicEl.addEventListener('ended', () => {
+      clearTimeout(this._musicGapTimer);
+      if (this.musicOn && this._wantMusic) {
+        this._musicGapTimer = setTimeout(() => {
+          if (this.musicOn && this._wantMusic) this.musicEl.play().catch(() => {});
+        }, 3000); // few-second silent break before the track repeats
+      }
+    });
     this.shootPool = [];
     for (let i = 0; i < 6; i++) {
       const a = new Audio('assets/audio/shoot.mp3');
@@ -235,18 +243,21 @@ const Sound = {
 
   startMusic() {
     this.initAudioFiles();
+    this._wantMusic = true;
     if (!this.musicOn) return;
     this.musicEl.volume = this.volume;
     this.musicEl.play().catch(() => {}); // browsers require a user gesture first - retried on first tap
   },
   stopMusic() {
+    this._wantMusic = false;
+    clearTimeout(this._musicGapTimer);
     if (this.musicEl) this.musicEl.pause();
   },
   setMusicOn(v) {
     this.musicOn = v;
     localStorage.setItem('gr_music', v ? '1' : '0');
     this.initAudioFiles();
-    if (v) this.musicEl.play().catch(() => {});
+    if (v && this._wantMusic) this.musicEl.play().catch(() => {});
     else this.musicEl.pause();
   },
   setSoundOn(v) { this.soundOn = v; localStorage.setItem('gr_sound', v ? '1' : '0'); },
@@ -593,7 +604,7 @@ function startInfinity() {
 function beginRunLoop() {
   state.running = true;
   state.lastFrame = performance.now();
-  Sound.startMusic();
+  Sound.stopMusic(); // background music plays before/after a run, not during
   requestAnimationFrame(loop);
 }
 
@@ -703,7 +714,7 @@ function getShatterMask(img) {
 }
 function shatterRock(o) {
   const img = Images.rocks[o.imgIndex];
-  if (!img || typeof d3 === 'undefined') return;
+  if (!img || typeof d3 === 'undefined' || !d3.Delaunay) { Sound.explosion(); return; }
   const rockType = ASSET_PATHS.rocks[o.imgIndex];
   const pr = project(o);
   const dispH = pr.w * (img.height / img.width) * SPRITE_SQUASH;
@@ -873,7 +884,10 @@ function update(dt, now) {
       if (!b.dead && !o.dead && rectsOverlap(b, o)) {
         b.dead = true;
         o.hp -= 1;
-        if (o.hp <= 0) { o.dead = true; addScoreOrCoins(3); shatterRock(o); }
+        if (o.hp <= 0) {
+          o.dead = true; addScoreOrCoins(3);
+          try { shatterRock(o); } catch (e) { console.error('shatterRock failed, falling back to plain explosion:', e); Sound.explosion(); }
+        }
         else Sound.rockHit();
       }
     });
@@ -1093,16 +1107,22 @@ function loop(now) {
   if (state.paused) { state.lastFrame = now; requestAnimationFrame(loop); return; }
   const dt = Math.min(48, now - state.lastFrame);
   state.lastFrame = now;
-  update(dt, now);
-  if (!state.running) return;
-  draw();
+  try {
+    update(dt, now);
+    if (!state.running) return;
+    draw();
+  } catch (e) {
+    // A bug in one frame should never silently freeze the whole game -
+    // log it and keep the loop alive so play can continue.
+    console.error('Frame error (game kept running):', e);
+  }
   requestAnimationFrame(loop);
 }
 function togglePause() {
   if (!state.running) return;
   state.paused = !state.paused;
-  if (state.paused) { Sound.stopMusic(); showOverlay('pause'); }
-  else { Sound.startMusic(); showOverlay(null); state.lastFrame = performance.now(); }
+  if (state.paused) { showOverlay('pause'); }
+  else { showOverlay(null); state.lastFrame = performance.now(); }
 }
 
 // ==========================================================
@@ -1110,6 +1130,7 @@ function togglePause() {
 // ==========================================================
 async function winLevel() {
   state.running = false;
+  Sound.startMusic();
   Sound.win();
   const totalCoins = state.coinsThisRun + state.currentLevel.reward_coins;
   document.getElementById('win-summary').textContent =
@@ -1122,6 +1143,7 @@ async function winLevel() {
 async function loseRun() {
   if (!state.running) return;
   state.running = false;
+  Sound.startMusic();
   Sound.lose();
   const loseTitle = document.getElementById('lose-title');
   const loseSummary = document.getElementById('lose-summary');
@@ -1224,8 +1246,19 @@ bindHold(document.getElementById('btn-up-p2'), () => p2() && (p2().keys.up = tru
 bindHold(document.getElementById('btn-down-p2'), () => p2() && (p2().keys.down = true), () => p2() && (p2().keys.down = false));
 
 // Player 1 = Arrow keys, Player 2 = WASD. Space always pauses/resumes.
+function toggleFullscreen() {
+  const doc = document;
+  const isFs = doc.fullscreenElement || doc.webkitFullscreenElement;
+  if (!isFs) {
+    const el = doc.documentElement;
+    (el.requestFullscreen || el.webkitRequestFullscreen || function () {}).call(el);
+  } else {
+    (doc.exitFullscreen || doc.webkitExitFullscreen || function () {}).call(doc);
+  }
+}
 window.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); togglePause(); return; }
+  if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); return; }
   if (p1()) {
     if (e.key === 'ArrowLeft') p1().keys.left = true;
     if (e.key === 'ArrowRight') p1().keys.right = true;
@@ -1255,6 +1288,7 @@ window.addEventListener('keyup', e => {
 });
 
 window.addEventListener('pointerdown', () => { Sound.ensureCtx(); Sound.startMusic(); }, { once: true });
+document.getElementById('btn-fullscreen').addEventListener('click', toggleFullscreen);
 document.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => Sound.click()));
 
 // ---------- Toast (honest feedback for features not built yet) ----------
@@ -1297,7 +1331,7 @@ document.getElementById('btn-pause-ingame').addEventListener('click', togglePaus
 // ---------- Pause overlay ----------
 document.getElementById('btn-pause-resume').addEventListener('click', togglePause);
 document.getElementById('btn-pause-back').addEventListener('click', togglePause);
-document.getElementById('btn-pause-home').addEventListener('click', () => { state.running = false; showOverlay(null); showScreen('home'); });
+document.getElementById('btn-pause-home').addEventListener('click', () => { state.running = false; Sound.startMusic(); showOverlay(null); showScreen('title'); });
 document.getElementById('btn-pause-restart').addEventListener('click', () => {
   showOverlay(null);
   if (state.mode === 'levels') startLevel(state.currentLevel.level_number); else startInfinity();
@@ -1306,9 +1340,9 @@ document.getElementById('btn-pause-restart').addEventListener('click', () => {
 // ---------- Win / lose ----------
 document.getElementById('btn-next-level').addEventListener('click', () => startLevel((state.currentLevel.level_number || 0) + 1));
 document.getElementById('btn-win-shop').addEventListener('click', () => { renderShop(); showOverlay('shop'); });
-document.getElementById('btn-win-home').addEventListener('click', () => { showOverlay(null); showScreen('home'); });
+document.getElementById('btn-win-home').addEventListener('click', () => { showOverlay(null); showScreen('title'); });
 document.getElementById('btn-retry').addEventListener('click', () => { if (state.mode === 'levels') startLevel(state.currentLevel.level_number); else startInfinity(); });
-document.getElementById('btn-lose-home').addEventListener('click', () => { showOverlay(null); showScreen('home'); });
+document.getElementById('btn-lose-home').addEventListener('click', () => { showOverlay(null); showScreen('title'); });
 
 // ---------- Settings ----------
 document.getElementById('toggle-music').addEventListener('change', e => Sound.setMusicOn(e.target.checked));
