@@ -9,6 +9,18 @@
 <body>
 
   <div id="game-container">
+
+    <!-- ============ LOADING SCREEN (shown at boot, and again before a run starts) ============ -->
+    <div id="loading-screen">
+      <div class="frame-photo-wrap">
+        <img src="assets/ui/frame_loading.jpg" alt="Loading" />
+        <div class="loading-track" style="left:19.87%;top:78.9%;width:51.1%;height:5.27%;">
+          <div id="loading-fill"></div>
+        </div>
+        <div id="loading-percent" style="left:70%;top:78.9%;width:15%;height:5.27%;">0%</div>
+      </div>
+    </div>
+
     <button id="btn-fullscreen" class="icon-btn small" title="Fullscreen (F)">⛶</button>
 
     <!-- ============ TITLE SCREEN (real entry point - full art, exact hotspots) ============ -->

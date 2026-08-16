@@ -292,6 +292,21 @@ const ASSET_PATHS = {
   ],
   beams: { blue: 'assets/fx/beam_blue.png', purple: 'assets/fx/beam_purple.png' },
 };
+// UI screens (title, wizard frames, pause, level planets) are plain <img src>
+// tags in the HTML rather than canvas sprites, so the browser would normally
+// only start fetching them once each screen is actually shown - on a first
+// (uncached) visit that produced a blank flash while a screen's art was still
+// downloading. These are force-preloaded up front instead, during the boot
+// loading screen, so every screen's art is already in the browser cache by
+// the time it can possibly be shown.
+const UI_ASSET_PATHS = [
+  'assets/ui/title_screen.jpg', 'assets/ui/frame_mode.jpg', 'assets/ui/frame_difficulty.jpg',
+  'assets/ui/frame_players.jpg', 'assets/ui/frame_ship.jpg', 'assets/ui/frame_pause.jpg',
+  'assets/ui/btn_start.png',
+  'assets/levels/planet1_moon.png', 'assets/levels/planet2_mars.png', 'assets/levels/planet3_venus.png',
+  'assets/levels/planet4_mercury.png', 'assets/levels/planet5_jupiter.png', 'assets/levels/planet6_saturn.png',
+  'assets/levels/planet7_uranus.png', 'assets/levels/planet8_neptune.png',
+];
 const SHIP_ROTATION_DEG = 0; // the blue/purple ship art is already drawn pointing straight up
 const ALIEN_ROTATION_DEG = 180;
 
@@ -304,14 +319,28 @@ function loadImage(src) {
     img.src = src;
   });
 }
-async function preloadAssets() {
-  Images.bg = await loadImage(ASSET_PATHS.bg);
-  const shipEntries = await Promise.all(Object.entries(ASSET_PATHS.ships).map(async ([id, src]) => [id, await loadImage(src)]));
-  shipEntries.forEach(([id, img]) => { Images.ships[id] = img; });
+// Loads every image the app uses (gameplay sprites + UI screen art), calling
+// onProgress(loadedCount, totalCount) as each one finishes, so a loading
+// screen can show real progress instead of an indeterminate spinner.
+async function preloadAllAssets(onProgress) {
+  const jobs = [];
+  let loaded = 0;
+  const track = promise => promise.then(result => { loaded++; if (onProgress) onProgress(loaded, jobs.length); return result; });
+
+  jobs.push(track(loadImage(ASSET_PATHS.bg).then(img => { Images.bg = img; })));
+  Object.entries(ASSET_PATHS.ships).forEach(([id, src]) => {
+    jobs.push(track(loadImage(src).then(img => { Images.ships[id] = img; })));
+  });
+  ASSET_PATHS.rocks.forEach((r, i) => {
+    jobs.push(track(loadImage(r.src).then(img => { Images.rocks[i] = img; })));
+  });
+  Object.entries(ASSET_PATHS.beams).forEach(([id, src]) => {
+    jobs.push(track(loadImage(src).then(img => { Images.beams[id] = img; })));
+  });
+  UI_ASSET_PATHS.forEach(src => { jobs.push(track(loadImage(src))); });
+
+  await Promise.all(jobs);
   Images.aliens = [Images.ships.purple]; // single shared sprite - no extra network request
-  Images.rocks = await Promise.all(ASSET_PATHS.rocks.map(r => loadImage(r.src)));
-  const beamEntries = await Promise.all(Object.entries(ASSET_PATHS.beams).map(async ([id, src]) => [id, await loadImage(src)]));
-  beamEntries.forEach(([id, img]) => { Images.beams[id] = img; });
 }
 function alienTierForLevel(levelNumber) { return 0; }
 function alienTierForScore(score) { return 0; }
@@ -405,12 +434,77 @@ function isPowerActive(player, type) {
 // ==========================================================
 // INIT
 // ==========================================================
+// ==========================================================
+// LOADING SCREEN (shown at boot while real assets load, and again as a
+// short transition just before a run starts). Progress always runs
+// 0% -> 78% while the tracked work is actually happening, then a fast
+// 78% -> 100% flourish once that work is done, before revealing the page.
+// ==========================================================
+const LoadingScreen = {
+  el: null, fill: null, percentEl: null,
+  init() {
+    this.el = document.getElementById('loading-screen');
+    this.fill = document.getElementById('loading-fill');
+    this.percentEl = document.getElementById('loading-percent');
+  },
+  show() { this.el.classList.remove('hidden'); this.setPercent(0); },
+  hide() { this.el.classList.add('hidden'); },
+  setPercent(pct) {
+    pct = Math.max(0, Math.min(100, Math.round(pct)));
+    this.fill.style.width = pct + '%';
+    this.percentEl.textContent = pct + '%';
+  },
+  // Drives 0->78% from a real (loaded, total) counter, then animates a quick
+  // 78->100% finish. Used at boot, where progress reflects actual downloads.
+  async runWithRealProgress(loaderFn) {
+    this.show();
+    await loaderFn((loaded, total) => {
+      const realPct = total > 0 ? (loaded / total) * 78 : 78;
+      this.setPercent(realPct);
+    });
+    await this._finish();
+  },
+  // Same visual behavior, but for moments where there's nothing left to
+  // actually load (assets already cached from boot) - a short simulated
+  // 0->78->100 run purely for a consistent, polished transition.
+  async runSimulated(totalMs = 700) {
+    this.show();
+    const rampMs = totalMs * 0.8;
+    const start = performance.now();
+    await new Promise(resolve => {
+      const step = now => {
+        const t = Math.min(1, (now - start) / rampMs);
+        this.setPercent(t * 78);
+        if (t < 1) requestAnimationFrame(step); else resolve();
+      };
+      requestAnimationFrame(step);
+    });
+    await this._finish();
+  },
+  async _finish() {
+    const start = performance.now();
+    const finishMs = 250;
+    await new Promise(resolve => {
+      const step = now => {
+        const t = Math.min(1, (now - start) / finishMs);
+        this.setPercent(78 + t * 22);
+        if (t < 1) requestAnimationFrame(step); else resolve();
+      };
+      requestAnimationFrame(step);
+    });
+    await new Promise(r => setTimeout(r, 150)); // brief hold at 100% before revealing
+    this.hide();
+  },
+};
+
 async function init() {
   resizeCanvas();
-  const [profile, levels] = await Promise.all([Api.getPlayer(), Api.getLevels()]);
-  state.profile = normalizeProfile(profile);
-  state.levels = levels;
-  await preloadAssets();
+  LoadingScreen.init();
+  await LoadingScreen.runWithRealProgress(async onProgress => {
+    const [profile, levels] = await Promise.all([Api.getPlayer(), Api.getLevels(), preloadAllAssets(onProgress)]);
+    state.profile = normalizeProfile(profile);
+    state.levels = levels;
+  });
   applySettingsToUI();
   showScreen('title');
 }
@@ -569,26 +663,30 @@ function resetRunState() {
   renderActivePowerBadges();
 }
 
-function startLevel(levelNumber) {
+async function startLevel(levelNumber) {
   const level = state.levels.find(l => l.level_number === levelNumber) || state.levels[0];
   state.mode = 'levels';
   state.difficulty = 'normal';
   state.selectedChars = [equippedChar];
   state.currentLevel = level;
+
+  showScreen('game'); // canvas needs real dimensions before resetRunState() sizes things off it
   resetRunState();
 
   HUD.pathBar.classList.remove('hidden');
   HUD.scoreBar.classList.add('hidden');
   HUD.levelLabel.textContent = `Level ${level.level_number}: ${level.name}`;
 
-  showScreen('game');
   showOverlay(null);
+  await LoadingScreen.runSimulated(); // renders on top (z-index) while the run is already set up underneath
   beginRunLoop();
 }
 
-function startInfinity() {
+async function startInfinity() {
   state.mode = 'infinity';
   state.currentLevel = { obstacle_density: 0.2, alien_count: 4 };
+
+  showScreen('game');
   resetRunState();
 
   HUD.pathBar.classList.add('hidden');
@@ -596,8 +694,8 @@ function startInfinity() {
   HUD.scoreCurrent.textContent = 'SCORE: 0';
   HUD.scoreBest.textContent = 'BEST: ' + (state.profile.bestScore || 0);
 
-  showScreen('game');
   showOverlay(null);
+  await LoadingScreen.runSimulated();
   beginRunLoop();
 }
 

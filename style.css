@@ -69,6 +69,33 @@ html, body {
 }
 .frame-hotspot:active { background: rgba(255,255,255,0.15); border-radius: 8px; }
 
+/* ---------- Loading screen (boot + before a run starts) ---------- */
+#loading-screen {
+  position: absolute; inset: 0;
+  z-index: 1000; /* above absolutely everything, including the fullscreen button */
+  display: flex; align-items: center; justify-content: center;
+  background: #000;
+}
+#loading-screen.hidden { display: none; }
+.loading-track {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 4px;
+}
+#loading-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #0091ea, #00e5ff);
+  transition: width 0.15s linear;
+  box-shadow: 0 0 8px rgba(0,229,255,0.8);
+}
+#loading-percent {
+  position: absolute;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: bold;
+  font-size: clamp(12px, 2.2vw, 26px);
+  text-shadow: 0 0 6px rgba(0,229,255,0.9);
+}
+
 /* ---------- Toast (honest feedback for not-yet-built features) ---------- */
 #toast {
   position: absolute;
