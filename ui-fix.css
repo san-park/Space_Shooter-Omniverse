@@ -1,6 +1,6 @@
 /* ui-fix.css
    Overrides to ensure the interactive UI sits above the canvas and buttons are visible/clickable.
-   Drop this file into the repo and include it after the main stylesheet to override problematic rules.
+   This file also forces frame hotspots to be invisible (they are interactive but not visually filled).
 */
 
 /* Ensure the main container is a positioned stacking context */
@@ -55,11 +55,21 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Ensure hotspots are not collapsed by unexpected width/height rules */
+/* Ensure hotspots are invisible but interactive and do not show browser default background */
 .frame-hotspot, .title-hotspot {
-  min-width: 8px !important;
-  min-height: 8px !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
   background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  cursor: pointer !important;
+  display: block !important;
+  padding: 0 !important;
+}
+
+.frame-hotspot:focus, .title-hotspot:focus {
+  outline: none !important;
 }
 
 /* If an ancestor created a new stacking context (transform, opacity < 1), ensure UI still floats above */
@@ -72,6 +82,13 @@
   background: rgba(255,255,255,0.06) !important;
   border: 1px solid rgba(255,255,255,0.12) !important;
   color: #e6f1ff !important;
+}
+
+/* Hide frame-hotspot visuals when their parent frame is hidden (safety) */
+.overlay.hidden .frame-hotspot,
+.screen.hidden .frame-photo-wrap .frame-hotspot,
+.title-frame .title-hotspot.hidden {
+  display: none !important;
 }
 
 /* Ensure dpad is visible on small screens and not clipped */
